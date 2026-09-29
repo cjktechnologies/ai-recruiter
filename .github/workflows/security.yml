@@ -51,6 +51,7 @@ jobs:
     name: Container image scan
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false   # report both images even when one fails
       matrix: { component: [backend, frontend] }
     steps:
       - uses: actions/checkout@v4

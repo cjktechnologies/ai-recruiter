@@ -89,5 +89,15 @@ def _one_line(text: str) -> str:
     return text.replace("\r", "\\r").replace("\n", "\\n")
 
 
+def _one_line_obj(value: Any) -> Any:
+    if isinstance(value, str):
+        return _one_line(value)
+    if isinstance(value, dict):
+        return {k: _one_line_obj(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_one_line_obj(v) for v in value]
+    return value
+
+
 def log_event(logger: logging.Logger, msg: str, level: int = logging.INFO, **fields: Any) -> None:
-    logger.log(level, _one_line(msg), extra={"extra_fields": fields})
+    logger.log(level, _one_line(msg), extra={"extra_fields": _one_line_obj(fields)})

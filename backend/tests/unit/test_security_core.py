@@ -121,3 +121,4 @@ def test_log_events_cannot_forge_lines() -> None:
     log_event(logger, "login\nINFO forged admin login", user="a\nb")
     assert "\n" not in TextFormatter("%(message)s").format(records[0])
     assert "\n" not in JsonFormatter().format(records[0])
+    assert records[0].extra_fields == {"user": "a\\nb"}
