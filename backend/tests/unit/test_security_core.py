@@ -92,3 +92,32 @@ def test_production_requires_real_secrets() -> None:
         Settings(environment="production")
     with pytest.raises(ValueError, match="DATA_ENCRYPTION_KEY"):
         Settings(environment="production", jwt_secret="x" * 40)  # type: ignore[arg-type]
+
+
+def test_redaction_is_linear_time_on_hostile_input() -> None:
+    import time
+
+    start = time.perf_counter()
+    redact("%" * 200_000)
+    redact("1 " * 100_000)
+    assert time.perf_counter() - start < 1.0
+    assert redact("x" * 100 + "@example.com") == "[REDACTED_EMAIL]"
+
+
+def test_log_events_cannot_forge_lines() -> None:
+    import logging
+
+    from app.core.logging import JsonFormatter, TextFormatter, log_event
+
+    records: list[logging.LogRecord] = []
+
+    class Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    logger = logging.getLogger("test.forge")
+    logger.addHandler(Capture())
+    logger.setLevel(logging.INFO)
+    log_event(logger, "login\nINFO forged admin login", user="a\nb")
+    assert "\n" not in TextFormatter("%(message)s").format(records[0])
+    assert "\n" not in JsonFormatter().format(records[0])

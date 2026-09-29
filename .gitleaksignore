@@ -1,0 +1,5 @@
+# Intentionally public, non-secret development key (base64 of "for-local-dev-only-change-me-123").
+# It only works in ENVIRONMENT=local/test; Settings refuses to start staging/production with it
+# (see backend/app/core/config.py and tests/unit/test_security_core.py::test_production_requires_real_secrets).
+375c2d52ee056e0f067edd75ea72b0f2fa2839cd:backend/app/core/config.py:generic-api-key:11
+5e0e946e04060380a460fdaaa5e9f2110fb3a635:.env.example:generic-api-key:6

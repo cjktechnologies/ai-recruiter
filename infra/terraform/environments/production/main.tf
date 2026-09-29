@@ -43,7 +43,7 @@ module "platform" {
   environment       = "production"
   region            = var.region
   github_repository = var.github_repository
-  vpc_cidr = "10.40.0.0/16"
+  vpc_cidr          = "10.40.0.0/16"
 }
 
 output "platform" {

@@ -39,18 +39,18 @@ module "platform" {
   source    = "../../modules/platform"
   providers = { aws = aws, aws.dr = aws.dr }
 
-  name              = "ai-recruiter-staging"
-  environment       = "staging"
-  region            = var.region
-  github_repository = var.github_repository
-  db_instance_class   = "db.t4g.medium"
-  db_multi_az         = false
+  name                     = "ai-recruiter-staging"
+  environment              = "staging"
+  region                   = var.region
+  github_repository        = var.github_repository
+  db_instance_class        = "db.t4g.medium"
+  db_multi_az              = false
   db_backup_retention_days = 7
-  redis_node_type     = "cache.t4g.small"
-  node_instance_types = ["t4g.large"]
-  node_min            = 2
-  node_max            = 4
-  vpc_cidr            = "10.41.0.0/16"
+  redis_node_type          = "cache.t4g.small"
+  node_instance_types      = ["t4g.large"]
+  node_min                 = 2
+  node_max                 = 4
+  vpc_cidr                 = "10.41.0.0/16"
 }
 
 output "platform" {

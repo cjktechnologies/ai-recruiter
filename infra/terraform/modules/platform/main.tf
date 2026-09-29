@@ -55,15 +55,15 @@ module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.24"
 
-  cluster_name                    = var.name
-  cluster_version                 = var.eks_version
-  vpc_id                          = module.vpc.vpc_id
-  subnet_ids                      = module.vpc.private_subnets
-  cluster_endpoint_public_access  = true
-  enable_irsa                     = true
+  cluster_name                             = var.name
+  cluster_version                          = var.eks_version
+  vpc_id                                   = module.vpc.vpc_id
+  subnet_ids                               = module.vpc.private_subnets
+  cluster_endpoint_public_access           = true
+  enable_irsa                              = true
   enable_cluster_creator_admin_permissions = true
-  cluster_encryption_config       = { resources = ["secrets"], provider_key_arn = aws_kms_key.data.arn }
-  cluster_enabled_log_types       = ["api", "audit", "authenticator"]
+  cluster_encryption_config                = { resources = ["secrets"], provider_key_arn = aws_kms_key.data.arn }
+  cluster_enabled_log_types                = ["api", "audit", "authenticator"]
 
   cluster_addons = {
     coredns                = {}
@@ -122,35 +122,35 @@ resource "random_password" "db" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier                            = var.name
-  engine                                = "postgres"
-  engine_version                        = "16.4"
-  instance_class                        = var.db_instance_class
-  allocated_storage                     = var.db_allocated_storage
-  max_allocated_storage                 = var.db_allocated_storage * 5
-  storage_type                          = "gp3"
-  storage_encrypted                     = true
-  kms_key_id                            = aws_kms_key.data.arn
-  db_name                               = "recruiter"
-  username                              = "recruiter"
-  password                              = random_password.db.result
-  db_subnet_group_name                  = module.vpc.database_subnet_group_name
-  vpc_security_group_ids                = [aws_security_group.db.id]
-  parameter_group_name                  = aws_db_parameter_group.pg.name
-  multi_az                              = var.db_multi_az
-  backup_retention_period               = var.db_backup_retention_days
-  backup_window                         = "02:00-03:00"
-  maintenance_window                    = "sun:03:30-sun:04:30"
-  copy_tags_to_snapshot                 = true
-  deletion_protection                   = local.prod
-  skip_final_snapshot                   = !local.prod
-  final_snapshot_identifier             = "${var.name}-final"
-  performance_insights_enabled          = true
-  performance_insights_kms_key_id       = aws_kms_key.data.arn
-  enabled_cloudwatch_logs_exports       = ["postgresql"]
-  auto_minor_version_upgrade            = true
-  iam_database_authentication_enabled   = true
-  tags                                  = local.tags
+  identifier                          = var.name
+  engine                              = "postgres"
+  engine_version                      = "16.4"
+  instance_class                      = var.db_instance_class
+  allocated_storage                   = var.db_allocated_storage
+  max_allocated_storage               = var.db_allocated_storage * 5
+  storage_type                        = "gp3"
+  storage_encrypted                   = true
+  kms_key_id                          = aws_kms_key.data.arn
+  db_name                             = "recruiter"
+  username                            = "recruiter"
+  password                            = random_password.db.result
+  db_subnet_group_name                = module.vpc.database_subnet_group_name
+  vpc_security_group_ids              = [aws_security_group.db.id]
+  parameter_group_name                = aws_db_parameter_group.pg.name
+  multi_az                            = var.db_multi_az
+  backup_retention_period             = var.db_backup_retention_days
+  backup_window                       = "02:00-03:00"
+  maintenance_window                  = "sun:03:30-sun:04:30"
+  copy_tags_to_snapshot               = true
+  deletion_protection                 = local.prod
+  skip_final_snapshot                 = !local.prod
+  final_snapshot_identifier           = "${var.name}-final"
+  performance_insights_enabled        = true
+  performance_insights_kms_key_id     = aws_kms_key.data.arn
+  enabled_cloudwatch_logs_exports     = ["postgresql"]
+  auto_minor_version_upgrade          = true
+  iam_database_authentication_enabled = true
+  tags                                = local.tags
 }
 
 # Cross-region snapshot copies for disaster recovery (production).
@@ -338,9 +338,9 @@ resource "aws_iam_policy" "app" {
     Version = "2012-10-17"
     Statement = [
       { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-        Resource = "${aws_s3_bucket.documents.arn}/*" },
+      Resource = "${aws_s3_bucket.documents.arn}/*" },
       { Effect = "Allow", Action = ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey"],
-        Resource = aws_kms_key.data.arn },
+      Resource = aws_kms_key.data.arn },
     ]
   })
 }
@@ -375,7 +375,7 @@ resource "aws_iam_role_policy" "deploy" {
       { Effect = "Allow", Action = ["ecr:GetAuthorizationToken"], Resource = "*" },
       { Effect = "Allow", Action = ["ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart",
         "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:BatchGetImage", "ecr:DescribeImages"],
-        Resource = [for r in aws_ecr_repository.repo : r.arn] },
+      Resource = [for r in aws_ecr_repository.repo : r.arn] },
       { Effect = "Allow", Action = ["eks:DescribeCluster"], Resource = module.eks.cluster_arn },
       { Effect = "Allow", Action = ["kms:Decrypt", "kms:GenerateDataKey"], Resource = aws_kms_key.data.arn },
     ]
