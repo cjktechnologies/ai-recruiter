@@ -14,10 +14,11 @@ RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app && useradd --system --uid 10001 --gid app --home /app app
 WORKDIR /app
 COPY --from=build /wheels /wheels
-# setuptools/wheel are build-time only; removing them drops their vendored packages (flagged by Trivy)
-# from the runtime image. Verified: API, Celery and Alembic run without them.
+# pip/setuptools/wheel are install-time only; removing them drops their (and their vendored packages')
+# vulnerabilities from the runtime image. Verified: API, Celery and Alembic run without them.
 RUN pip install --no-index --find-links=/wheels /wheels/* && rm -rf /wheels \
-    && pip uninstall -y setuptools wheel
+    && pip uninstall -y setuptools wheel \
+    && python -m pip uninstall -y pip
 COPY --chown=app:app alembic.ini ./
 COPY --chown=app:app alembic ./alembic
 COPY --chown=app:app app ./app

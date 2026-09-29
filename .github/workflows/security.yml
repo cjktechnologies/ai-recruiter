@@ -60,6 +60,8 @@ jobs:
         with:
           image-ref: scan/${{ matrix.component }}:ci
           severity: CRITICAL,HIGH
+          # Without this, SARIF mode ignores `severity` and exit-code fails on LOW/MEDIUM too.
+          limit-severities-for-sarif: true
           ignore-unfixed: true
           exit-code: "1"
           format: sarif
