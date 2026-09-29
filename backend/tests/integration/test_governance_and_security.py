@@ -219,11 +219,22 @@ def test_public_chatbot_and_portal(client: TestClient, tenant: Tenant) -> None:
 def test_candidate_update_skills_and_notes(client: TestClient, tenant: Tenant) -> None:
     c = _candidate(client, tenant, skills=["python3", "Postgres"])
     assert {s["name"] for s in c["skills"]} == {"Python", "PostgreSQL"}
-    upd = _ok(client.patch(f"{API}/candidates/{c['id']}", json={"headline": "Staff Engineer", "skills": ["Go"]},
-                           headers=tenant.h("recruiter")))
+    upd = _ok(
+        client.patch(
+            f"{API}/candidates/{c['id']}",
+            json={"headline": "Staff Engineer", "skills": ["Go"]},
+            headers=tenant.h("recruiter"),
+        )
+    )
     assert upd["headline"] == "Staff Engineer" and {s["name"] for s in upd["skills"]} == {"Go"}
-    _ok(client.post(f"{API}/candidates/{c['id']}/notes", json={"body": "Great call", "visibility": "private"},
-                    headers=tenant.h("recruiter")), 201)
+    _ok(
+        client.post(
+            f"{API}/candidates/{c['id']}/notes",
+            json={"body": "Great call", "visibility": "private"},
+            headers=tenant.h("recruiter"),
+        ),
+        201,
+    )
     assert len(_ok(client.get(f"{API}/candidates/{c['id']}/notes", headers=tenant.h("recruiter")))) == 1
     assert _ok(client.get(f"{API}/candidates/{c['id']}/notes", headers=tenant.h("hr_manager"))) == []
     found = _ok(client.get(f"{API}/candidates", params={"skills": ["Go"]}, headers=tenant.h("recruiter")))
