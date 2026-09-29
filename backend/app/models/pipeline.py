@@ -53,9 +53,7 @@ class ApplicationStageHistory(UUIDPk, Base):
 
     application_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("applications.id", ondelete="CASCADE"))
     from_stage: Mapped[ApplicationStage | None] = mapped_column(enum_col(ApplicationStage, name="from_stage_enum"))
-    to_stage: Mapped[ApplicationStage] = mapped_column(
-        enum_col(ApplicationStage, name="to_stage_enum"), nullable=False
-    )
+    to_stage: Mapped[ApplicationStage] = mapped_column(enum_col(ApplicationStage, name="to_stage_enum"), nullable=False)
     changed_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     actor_type: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)

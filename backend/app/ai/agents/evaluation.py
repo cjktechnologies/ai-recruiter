@@ -68,8 +68,11 @@ class EvaluationAgent(BaseAgent[EvaluationInput, EvaluationOutput]):
             for comp, pct in a.competency_scores.items():
                 matrix.setdefault(comp, []).append(1 + 4 * pct / 100)  # map % onto 1-5 scale
         comp_summary = {
-            c: {"mean": round(statistics.mean(v), 2), "n": len(v),
-                "spread": round(max(v) - min(v), 2) if len(v) > 1 else 0.0}
+            c: {
+                "mean": round(statistics.mean(v), 2),
+                "n": len(v),
+                "spread": round(max(v) - min(v), 2) if len(v) > 1 else 0.0,
+            }
             for c, v in matrix.items()
         }
         components: list[tuple[float, float]] = []  # (score 0-100, weight)
@@ -125,6 +128,12 @@ class EvaluationAgent(BaseAgent[EvaluationInput, EvaluationOutput]):
             strengths = strengths + [s for s in llm.strengths if s not in strengths]
             concerns = concerns + [c for c in llm.concerns if c not in concerns]
         return EvaluationOutput(
-            overall_score=overall, recommendation=rec, competency_matrix=comp_summary, strengths=strengths,
-            concerns=concerns, risks=risks, rationale=rationale, ai_generated=ai_generated,
+            overall_score=overall,
+            recommendation=rec,
+            competency_matrix=comp_summary,
+            strengths=strengths,
+            concerns=concerns,
+            risks=risks,
+            rationale=rationale,
+            ai_generated=ai_generated,
         )

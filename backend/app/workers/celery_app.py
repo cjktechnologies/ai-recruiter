@@ -27,7 +27,10 @@ celery.conf.update(
     broker_connection_retry_on_startup=True,
     task_routes={"app.workers.tasks.run_ai_*": {"queue": "ai"}},
     beat_schedule={
-        "interview-reminders": {"task": "app.workers.tasks.send_interview_reminders", "schedule": crontab(minute="*/15")},
+        "interview-reminders": {
+            "task": "app.workers.tasks.send_interview_reminders",
+            "schedule": crontab(minute="*/15"),
+        },
         "expire-offers-assessments": {"task": "app.workers.tasks.expire_stale_items", "schedule": crontab(minute=5)},
         "deliver-queued-messages": {"task": "app.workers.tasks.deliver_communications", "schedule": 60.0},
         "retention-purge": {"task": "app.workers.tasks.retention_purge", "schedule": crontab(hour=2, minute=30)},

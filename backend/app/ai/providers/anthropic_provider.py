@@ -26,17 +26,21 @@ class AnthropicProvider:
         self._max_tokens = max_tokens
 
     def complete_json(self, *, system: str, user: str, schema: type[T], max_tokens: int | None = None) -> LLMResult[T]:
+        from anthropic.types.beta import BetaMessageParam, BetaOutputConfigParam
+
         a = self._anthropic
+        messages: list[BetaMessageParam] = [{"role": "user", "content": user}]
+        output_config: BetaOutputConfigParam = {
+            "effort": self._effort,  # type: ignore[typeddict-item]
+            "format": {"type": "json_schema", "schema": strict_json_schema(schema)},
+        }
         try:
             response = self._client.beta.messages.create(
                 model=self.model,
                 max_tokens=max_tokens or self._max_tokens,
                 system=system,
-                messages=[{"role": "user", "content": user}],
-                output_config={
-                    "effort": self._effort,
-                    "format": {"type": "json_schema", "schema": strict_json_schema(schema)},
-                },
+                messages=messages,
+                output_config=output_config,
                 # On a safety decline the API re-runs the request on a suitable fallback model.
                 betas=["server-side-fallback-2026-07-01"],
                 fallbacks="default",

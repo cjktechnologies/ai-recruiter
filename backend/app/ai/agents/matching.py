@@ -60,9 +60,25 @@ class MatchOutput(BaseModel):
     matches: list[RequirementMatch]
 
 
-_EDU_RANK = {"diploma": 1, "associate": 1, "hnd": 1, "national diploma": 1, "bachelor": 2, "bsc": 2, "ba": 2,
-             "bs": 2, "beng": 2, "btech": 2, "master": 3, "msc": 3, "ms": 3, "mba": 3, "meng": 3, "phd": 4,
-             "doctorate": 4}
+_EDU_RANK = {
+    "diploma": 1,
+    "associate": 1,
+    "hnd": 1,
+    "national diploma": 1,
+    "bachelor": 2,
+    "bsc": 2,
+    "ba": 2,
+    "bs": 2,
+    "beng": 2,
+    "btech": 2,
+    "master": 3,
+    "msc": 3,
+    "ms": 3,
+    "mba": 3,
+    "meng": 3,
+    "phd": 4,
+    "doctorate": 4,
+}
 
 
 def _edu_rank(text: str) -> int:
@@ -117,16 +133,22 @@ def compute_match(inp: MatchInput) -> MatchOutput:
             detail = "Language listed" if hit else f"{req.name} not listed"
         elif kind == "location":
             loc = (inp.candidate_location or "").lower()
-            hit = bool(loc) and (req.name.lower() in loc or loc in req.name.lower())
-            matched, partial, evidence = hit, 1.0 if hit else 0.0, inp.candidate_location
-            detail = "Location matches" if hit else "Location not confirmed — verify with candidate"
+            loc_ok = bool(loc) and (req.name.lower() in loc or loc in req.name.lower())
+            matched, partial, evidence = loc_ok, 1.0 if loc_ok else 0.0, inp.candidate_location
+            detail = "Location matches" if loc_ok else "Location not confirmed — verify with candidate"
         else:  # work_authorization and other human-verified criteria
             detail = "Requires recruiter verification"
             partial = 0.5
         matches.append(
             RequirementMatch(
-                requirement=req.name, kind=kind, mandatory=req.is_mandatory, weight=req.weight,
-                matched=matched, partial=round(partial, 3), evidence=evidence, detail=detail,
+                requirement=req.name,
+                kind=kind,
+                mandatory=req.is_mandatory,
+                weight=req.weight,
+                matched=matched,
+                partial=round(partial, 3),
+                evidence=evidence,
+                detail=detail,
             )
         )
     total_w = sum(m.weight for m in matches) or 1.0
@@ -138,8 +160,11 @@ def compute_match(inp: MatchInput) -> MatchOutput:
     score = 100 * ((1 - weight) * coverage + weight * semantic_scaled)
     mandatory_met = all(m.matched for m in matches if m.mandatory and m.kind != "work_authorization")
     return MatchOutput(
-        score=round(score, 1), coverage_score=round(coverage * 100, 1), semantic_similarity=round(semantic, 3),
-        mandatory_met=mandatory_met, matches=matches,
+        score=round(score, 1),
+        coverage_score=round(coverage * 100, 1),
+        semantic_similarity=round(semantic, 3),
+        mandatory_met=mandatory_met,
+        matches=matches,
     )
 
 

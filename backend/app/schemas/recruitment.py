@@ -7,7 +7,12 @@ from decimal import Decimal
 from pydantic import BaseModel, Field, model_validator
 
 from app.domain.enums import (
-    ApprovalStatus, EmploymentType, JobStatus, RemotePolicy, RequirementKind, RequisitionStatus,
+    ApprovalStatus,
+    EmploymentType,
+    JobStatus,
+    RemotePolicy,
+    RequirementKind,
+    RequisitionStatus,
 )
 from app.schemas.common import ORM, Timestamped
 
@@ -140,7 +145,7 @@ class KnockoutQuestionIn(BaseModel):
 
 class ScreeningConfig(BaseModel):
     knockout_questions: list[KnockoutQuestionIn] = Field(default_factory=list)
-    thresholds: dict[str, float] = Field(default_factory=lambda: {"strong_yes": 80, "yes": 65, "maybe": 45})
+    thresholds: dict[str, float] = Field(default_factory=lambda: {"strong_yes": 80.0, "yes": 65.0, "maybe": 45.0})
     auto_screen: bool = True
 
 

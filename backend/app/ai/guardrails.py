@@ -18,16 +18,29 @@ from dataclasses import dataclass, field
 MAX_UNTRUSTED_CHARS = 60_000
 
 _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("override_instructions", re.compile(
-        r"\b(ignore|disregard|forget|override)\b[^.\n]{0,40}\b(previous|prior|above|all|earlier|system)\b"
-        r"[^.\n]{0,40}\b(instruction|prompt|rule|direction|guideline)s?", re.I)),
+    (
+        "override_instructions",
+        re.compile(
+            r"\b(ignore|disregard|forget|override)\b[^.\n]{0,40}\b(previous|prior|above|all|earlier|system)\b"
+            r"[^.\n]{0,40}\b(instruction|prompt|rule|direction|guideline)s?",
+            re.I,
+        ),
+    ),
     ("role_hijack", re.compile(r"\b(you are now|act as|pretend to be|from now on you)\b", re.I)),
     ("system_prompt_probe", re.compile(r"\b(system prompt|developer message|hidden instructions)\b", re.I)),
-    ("score_manipulation", re.compile(
-        r"\b(rate|score|rank|mark|recommend|classify)\b[^.\n]{0,40}\b(this|the|me|candidate)\b[^.\n]{0,40}"
-        r"\b(highest|top|perfect|10/10|100%|strong(ly)? (yes|hire)|best)\b", re.I)),
+    (
+        "score_manipulation",
+        re.compile(
+            r"\b(rate|score|rank|mark|recommend|classify)\b[^.\n]{0,40}\b(this|the|me|candidate)\b[^.\n]{0,40}"
+            r"\b(highest|top|perfect|10/10|100%|strong(ly)? (yes|hire)|best)\b",
+            re.I,
+        ),
+    ),
     ("hire_directive", re.compile(r"\b(must|should|always)\s+(be\s+)?(hire|select|shortlist|advance)(d)?\b", re.I)),
-    ("tool_markup", re.compile(r"(<\s*/?\s*(system|assistant|instructions?|tool_call)\s*>|\[/?INST\]|<\|im_start\|>)", re.I)),
+    (
+        "tool_markup",
+        re.compile(r"(<\s*/?\s*(system|assistant|instructions?|tool_call)\s*>|\[/?INST\]|<\|im_start\|>)", re.I),
+    ),
 ]
 
 _ZERO_WIDTH = dict.fromkeys(map(ord, "​‌‍⁠﻿­"), None)

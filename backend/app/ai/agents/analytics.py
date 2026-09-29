@@ -42,27 +42,56 @@ class AnalyticsAgent(BaseAgent[AnalyticsInput, AnalyticsOutput]):
         for stage, days in (m.get("avg_days_in_stage") or {}).items():
             limit = p.sla_days.get(stage)
             if limit and days and days > limit:
-                out.append(Insight(severity="warning", metric=f"avg_days_in_stage.{stage}",
-                                   title=f"{stage.title()} is a bottleneck",
-                                   detail=f"Candidates spend {days:.1f} days on average vs SLA {limit} days."))
+                out.append(
+                    Insight(
+                        severity="warning",
+                        metric=f"avg_days_in_stage.{stage}",
+                        title=f"{stage.title()} is a bottleneck",
+                        detail=f"Candidates spend {days:.1f} days on average vs SLA {limit} days.",
+                    )
+                )
         oar = m.get("offer_acceptance_rate")
         if oar is not None and oar < 70 and (m.get("offers_sent") or 0) >= 3:
-            out.append(Insight(severity="warning", metric="offer_acceptance_rate", title="Low offer acceptance",
-                               detail=f"Only {oar:.0f}% of offers accepted; review compensation competitiveness."))
+            out.append(
+                Insight(
+                    severity="warning",
+                    metric="offer_acceptance_rate",
+                    title="Low offer acceptance",
+                    detail=f"Only {oar:.0f}% of offers accepted; review compensation competitiveness.",
+                )
+            )
         sources = m.get("source_effectiveness") or []
         if sources:
             best = max(sources, key=lambda s: s.get("hire_rate", 0))
             if best.get("hires", 0):
-                out.append(Insight(severity="info", metric="source_effectiveness", title="Most effective source",
-                                   detail=f"'{best['source']}' converts {best['hire_rate']:.1f}% of applicants to hires."))
+                out.append(
+                    Insight(
+                        severity="info",
+                        metric="source_effectiveness",
+                        title="Most effective source",
+                        detail=f"'{best['source']}' converts {best['hire_rate']:.1f}% of applicants to hires.",
+                    )
+                )
         for f in m.get("fairness_alerts") or []:
-            out.append(Insight(severity="critical", metric="fairness", title="Adverse impact alert",
-                               detail=f"{f['stage']}: selection-rate ratio {f['impact_ratio']:.2f} for {f['group']} "
-                                      "is below the four-fifths threshold. Review screening criteria."))
+            out.append(
+                Insight(
+                    severity="critical",
+                    metric="fairness",
+                    title="Adverse impact alert",
+                    detail=f"{f['stage']}: selection-rate ratio {f['impact_ratio']:.2f} for {f['group']} "
+                    "is below the four-fifths threshold. Review screening criteria.",
+                )
+            )
         conv = m.get("screening_conversion")
         if conv is not None and conv < 10 and (m.get("applications") or 0) > 20:
-            out.append(Insight(severity="info", metric="screening_conversion", title="Low screening pass-through",
-                               detail=f"{conv:.1f}% of applicants pass screening; consider refining the advert."))
+            out.append(
+                Insight(
+                    severity="info",
+                    metric="screening_conversion",
+                    title="Low screening pass-through",
+                    detail=f"{conv:.1f}% of applicants pass screening; consider refining the advert.",
+                )
+            )
         llm = self.ask_llm(state, schema=LLMInsights, user=f"Metrics JSON: {m}")
         if llm:
             return AnalyticsOutput(insights=out + llm.insights, ai_generated=True)

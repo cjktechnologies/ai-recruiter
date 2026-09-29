@@ -90,8 +90,15 @@ class JobDescriptionAgent(BaseAgent[JDInput, JDOutput]):
         reqs = [SuggestedRequirement(kind="skill", name=s, is_mandatory=True, weight=2.0) for s in p.required_skills]
         reqs += [SuggestedRequirement(kind="skill", name=s, is_mandatory=False, weight=1.0) for s in p.preferred_skills]
         if p.min_years_experience:
-            reqs.append(SuggestedRequirement(kind="experience", name="Professional experience", is_mandatory=False,
-                                             weight=1.5, min_years=p.min_years_experience))
+            reqs.append(
+                SuggestedRequirement(
+                    kind="experience",
+                    name="Professional experience",
+                    is_mandatory=False,
+                    weight=1.5,
+                    min_years=p.min_years_experience,
+                )
+            )
         description, advert = self._template(p)
         ai_generated = False
         llm = self.ask_llm(state, schema=LLMJD, user=p.model_dump_json())
@@ -101,8 +108,13 @@ class JobDescriptionAgent(BaseAgent[JDInput, JDOutput]):
             state.flags.extend(f"review:{f}" for f in flags)
             description, advert, ai_generated = llm.description, llm.advertisement, True
         issues = [f"'{t}': {a}" for t, a in find_exclusionary_language(description + " " + advert)]
-        return JDOutput(description=description, advertisement=advert, requirements=reqs,
-                        inclusive_language_issues=issues, ai_generated=ai_generated)
+        return JDOutput(
+            description=description,
+            advertisement=advert,
+            requirements=reqs,
+            inclusive_language_issues=issues,
+            ai_generated=ai_generated,
+        )
 
     @staticmethod
     def _template(p: JDInput) -> tuple[str, str]:
@@ -110,12 +122,17 @@ class JobDescriptionAgent(BaseAgent[JDInput, JDOutput]):
         where = f"{work}{' — ' + p.location if p.location else ''}"
         salary = ""
         if p.show_salary and p.salary_min and p.salary_max:
-            salary = f"\n## Compensation\n{p.currency} {p.salary_min:,.0f} – {p.salary_max:,.0f} per year, plus benefits.\n"
+            salary = (
+                f"\n## Compensation\n{p.currency} {p.salary_min:,.0f} – {p.salary_max:,.0f} per year, plus benefits.\n"
+            )
         resp = "\n".join(f"- {r}" for r in p.responsibilities) or "- Details to be discussed with the hiring team."
         must = "\n".join(f"- {s}" for s in p.required_skills) or "- See role summary"
         nice = "\n".join(f"- {s}" for s in p.preferred_skills)
-        exp = f"- {p.min_years_experience}+ years of relevant experience (or equivalent demonstrated skill)\n" \
-            if p.min_years_experience else ""
+        exp = (
+            f"- {p.min_years_experience}+ years of relevant experience (or equivalent demonstrated skill)\n"
+            if p.min_years_experience
+            else ""
+        )
         benefits = "\n".join(f"- {b}" for b in p.benefits)
         summary = p.summary or (
             f"{p.company_name} is hiring a {p.title}"

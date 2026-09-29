@@ -59,34 +59,71 @@ class RequisitionAgent(BaseAgent[RequisitionInput, RequisitionOutput]):
     def execute(self, ctx: AgentContext, p: RequisitionInput, state: RunState) -> RequisitionOutput:
         issues: list[Issue] = []
         if len(p.justification.split()) < 15:
-            issues.append(Issue(severity="error", field="justification",
-                                message="Business justification is too brief (min ~15 words)."))
+            issues.append(
+                Issue(
+                    severity="error",
+                    field="justification",
+                    message="Business justification is too brief (min ~15 words).",
+                )
+            )
         if not p.required_skills:
             issues.append(Issue(severity="error", field="required_skills", message="List at least one required skill."))
         if len(p.required_skills) > 12:
-            issues.append(Issue(severity="warning", field="required_skills",
-                                message="More than 12 must-have skills narrows the pool; move some to preferred."))
+            issues.append(
+                Issue(
+                    severity="warning",
+                    field="required_skills",
+                    message="More than 12 must-have skills narrows the pool; move some to preferred.",
+                )
+            )
         if not p.responsibilities:
             issues.append(Issue(severity="warning", field="responsibilities", message="Add key responsibilities."))
         if p.budget_min is None or p.budget_max is None:
             issues.append(Issue(severity="error", field="budget", message="Salary budget range is required."))
-        elif p.band_min is not None and p.band_max is not None and (
-            p.budget_min < p.band_min or p.budget_max > p.band_max
+        elif (
+            p.band_min is not None
+            and p.band_max is not None
+            and (p.budget_min < p.band_min or p.budget_max > p.band_max)
         ):
-            issues.append(Issue(severity="warning", field="budget",
-                                message=f"Budget {p.budget_min}-{p.budget_max} is outside the approved band "
-                                        f"{p.band_min}-{p.band_max}; finance approval will be required."))
+            issues.append(
+                Issue(
+                    severity="warning",
+                    field="budget",
+                    message=f"Budget {p.budget_min}-{p.budget_max} is outside the approved band "
+                    f"{p.band_min}-{p.band_max}; finance approval will be required.",
+                )
+            )
         if p.target_start_date and p.target_start_date < p.today + timedelta(days=21):
-            issues.append(Issue(severity="warning", field="target_start_date",
-                                message="Target start is less than 3 weeks away; typical time-to-hire is 30-45 days."))
+            issues.append(
+                Issue(
+                    severity="warning",
+                    field="target_start_date",
+                    message="Target start is less than 3 weeks away; typical time-to-hire is 30-45 days.",
+                )
+            )
         if p.min_years_experience and p.min_years_experience > 15:
-            issues.append(Issue(severity="warning", field="min_years_experience",
-                                message="Very high experience minimums can be exclusionary; consider competencies."))
+            issues.append(
+                Issue(
+                    severity="warning",
+                    field="min_years_experience",
+                    message="Very high experience minimums can be exclusionary; consider competencies.",
+                )
+            )
         text = " ".join([p.title, p.justification, *p.responsibilities, *p.required_skills])
         for term, alt in find_exclusionary_language(text):
             issues.append(Issue(severity="warning", field="language", message=f"Consider replacing '{term}' ({alt})."))
-        fields = [p.title, p.justification, p.required_skills, p.responsibilities, p.budget_min, p.budget_max,
-                  p.location, p.job_level, p.target_start_date, p.department]
+        fields = [
+            p.title,
+            p.justification,
+            p.required_skills,
+            p.responsibilities,
+            p.budget_min,
+            p.budget_max,
+            p.location,
+            p.job_level,
+            p.target_start_date,
+            p.department,
+        ]
         completeness = sum(1 for f in fields if f) / len(fields)
         route = ["hiring_manager"]
         if any(i.field == "budget" and i.severity == "warning" for i in issues) or p.headcount > 3:
@@ -98,6 +135,9 @@ class RequisitionAgent(BaseAgent[RequisitionInput, RequisitionOutput]):
             suggestions += llm.suggestions
             issues += [Issue(severity="info", field="ai_review", message=r) for r in llm.risks]
         return RequisitionOutput(
-            valid=not any(i.severity == "error" for i in issues), completeness=round(completeness, 2),
-            issues=issues, suggestions=suggestions, approval_route=route,
+            valid=not any(i.severity == "error" for i in issues),
+            completeness=round(completeness, 2),
+            issues=issues,
+            suggestions=suggestions,
+            approval_route=route,
         )

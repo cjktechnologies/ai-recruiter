@@ -18,7 +18,41 @@ from app.core.config import get_settings
 
 _TOKEN = re.compile(r"[a-z0-9+#.]{2,}")
 _STOP = frozenset(
-    ["the", "and", "for", "with", "from", "that", "this", "have", "has", "are", "was", "were", "you", "your", "our", "will", "can", "able", "into", "over", "per", "about", "using", "use", "used", "years", "year", "experience", "work", "working", "team", "role", "job"]
+    [
+        "the",
+        "and",
+        "for",
+        "with",
+        "from",
+        "that",
+        "this",
+        "have",
+        "has",
+        "are",
+        "was",
+        "were",
+        "you",
+        "your",
+        "our",
+        "will",
+        "can",
+        "able",
+        "into",
+        "over",
+        "per",
+        "about",
+        "using",
+        "use",
+        "used",
+        "years",
+        "year",
+        "experience",
+        "work",
+        "working",
+        "team",
+        "role",
+        "job",
+    ]
 )
 
 

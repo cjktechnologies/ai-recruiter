@@ -20,7 +20,12 @@ from app.models.org import Organization
 from app.models.selection import BackgroundCheck
 from app.schemas.common import Message, Page
 from app.schemas.governance import (
-    AuditLogOut, GovernancePolicy, IntegrationIn, IntegrationOut, IntegrationUpdate, NotificationOut,
+    AuditLogOut,
+    GovernancePolicy,
+    IntegrationIn,
+    IntegrationOut,
+    IntegrationUpdate,
+    NotificationOut,
 )
 from app.schemas.pipeline import BackgroundCheckUpdate
 from app.services import governance, selection
@@ -36,8 +41,15 @@ def list_notifications(db: DB, paging: Paging, p: CurrentPrincipal, unread: bool
     stmt = select(Notification).where(Notification.user_id == p.user_id)
     if unread:
         stmt = stmt.where(Notification.read_at.is_(None))
-    items, total = paginate(db, stmt, model=Notification, page=paging.page, page_size=paging.page_size,
-                            sort=paging.sort, allowed_sorts={"created_at"})
+    items, total = paginate(
+        db,
+        stmt,
+        model=Notification,
+        page=paging.page,
+        page_size=paging.page_size,
+        sort=paging.sort,
+        allowed_sorts={"created_at"},
+    )
     return {"items": items, "total": total, "page": paging.page, "page_size": paging.page_size}
 
 
@@ -53,8 +65,11 @@ def mark_read(notification_id: uuid.UUID, db: DB, p: CurrentPrincipal) -> Messag
 
 @router.post("/notifications/read-all", response_model=Message)
 def mark_all_read(db: DB, p: CurrentPrincipal) -> Message:
-    db.execute(update(Notification).where(Notification.user_id == p.user_id, Notification.read_at.is_(None))
-               .values(read_at=utcnow()))
+    db.execute(
+        update(Notification)
+        .where(Notification.user_id == p.user_id, Notification.read_at.is_(None))
+        .values(read_at=utcnow())
+    )
     db.commit()
     return Message(message="ok")
 
@@ -71,24 +86,30 @@ def list_integrations(db: DB, p: Annotated[Principal, Depends(require("integrati
 
 
 @router.post("/integrations", response_model=IntegrationOut, status_code=201)
-def create_integration(data: IntegrationIn, db: DB,
-                       p: Annotated[Principal, Depends(require("integrations:manage"))]) -> dict:
+def create_integration(
+    data: IntegrationIn, db: DB, p: Annotated[Principal, Depends(require("integrations:manage"))]
+) -> dict:
     i = governance.create_integration(db, data, p)
     db.commit()
     return _integration_out(i)
 
 
 @router.patch("/integrations/{integration_id}", response_model=IntegrationOut)
-def update_integration(integration_id: uuid.UUID, data: IntegrationUpdate, db: DB,
-                       p: Annotated[Principal, Depends(require("integrations:manage"))]) -> dict:
+def update_integration(
+    integration_id: uuid.UUID,
+    data: IntegrationUpdate,
+    db: DB,
+    p: Annotated[Principal, Depends(require("integrations:manage"))],
+) -> dict:
     i = governance.update_integration(db, get_scoped(db, Integration, integration_id, p), data, p)
     db.commit()
     return _integration_out(i)
 
 
 @router.delete("/integrations/{integration_id}", response_model=Message)
-def delete_integration(integration_id: uuid.UUID, db: DB,
-                       p: Annotated[Principal, Depends(require("integrations:manage"))]) -> Message:
+def delete_integration(
+    integration_id: uuid.UUID, db: DB, p: Annotated[Principal, Depends(require("integrations:manage"))]
+) -> Message:
     i = get_scoped(db, Integration, integration_id, p)
     audit(db, action="integration.deleted", entity_type="integration", entity_id=i.id, principal=p)
     db.delete(i)
@@ -96,25 +117,41 @@ def delete_integration(integration_id: uuid.UUID, db: DB,
     return Message(message="deleted")
 
 
-@router.post("/webhooks/background-checks/{integration_id}", response_model=Message,
-             summary="Inbound provider webhook (HMAC-signed: X-Timestamp, X-Signature)")
-async def background_check_webhook(integration_id: uuid.UUID, request: Request, db: DB,
-                                   x_timestamp: Annotated[str, Header()], x_signature: Annotated[str, Header()]
-                                   ) -> Message:
+@router.post(
+    "/webhooks/background-checks/{integration_id}",
+    response_model=Message,
+    summary="Inbound provider webhook (HMAC-signed: X-Timestamp, X-Signature)",
+)
+async def background_check_webhook(
+    integration_id: uuid.UUID,
+    request: Request,
+    db: DB,
+    x_timestamp: Annotated[str, Header()],
+    x_signature: Annotated[str, Header()],
+) -> Message:
     integ = db.get(Integration, integration_id)
     if not integ or integ.kind != IntegrationKind.BACKGROUND_CHECK or not integ.is_enabled or not integ.secret:
         raise NotFoundError()
     body = await request.body()
-    if not verify_inbound_signature(json.loads(integ.secret).get("signing_secret", ""), body, x_timestamp,
-                                    x_signature):
+    if not verify_inbound_signature(json.loads(integ.secret).get("signing_secret", ""), body, x_timestamp, x_signature):
         raise AuthenticationError("Invalid signature")
     payload = json.loads(body)
-    bc = db.scalar(select(BackgroundCheck).where(BackgroundCheck.organization_id == integ.organization_id,
-                                                 BackgroundCheck.external_id == str(payload.get("external_id"))))
+    bc = db.scalar(
+        select(BackgroundCheck).where(
+            BackgroundCheck.organization_id == integ.organization_id,
+            BackgroundCheck.external_id == str(payload.get("external_id")),
+        )
+    )
     if not bc:
         raise NotFoundError("Unknown check")
-    selection.update_background_check(db, bc, BackgroundCheckUpdate(
-        status=payload["status"], result=payload.get("result"), result_detail=payload.get("detail", {})), None)
+    selection.update_background_check(
+        db,
+        bc,
+        BackgroundCheckUpdate(
+            status=payload["status"], result=payload.get("result"), result_detail=payload.get("detail", {})
+        ),
+        None,
+    )
     integ.last_sync_at = utcnow()
     db.commit()
     return Message(message="accepted")
@@ -122,12 +159,23 @@ async def background_check_webhook(integration_id: uuid.UUID, request: Request, 
 
 # --- Audit & governance ---------------------------------------------------------------------
 @router.get("/audit-logs", response_model=Page[AuditLogOut])
-def audit_logs(db: DB, paging: Paging, p: Annotated[Principal, Depends(require("audit:read"))],
-               entity_type: str | None = None, entity_id: str | None = None, actor_id: str | None = None,
-               action: str | None = None, since: datetime | None = None, until: datetime | None = None) -> dict:
+def audit_logs(
+    db: DB,
+    paging: Paging,
+    p: Annotated[Principal, Depends(require("audit:read"))],
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    actor_id: str | None = None,
+    action: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+) -> dict:
     stmt = select(AuditLog).where(AuditLog.organization_id == p.organization_id)
-    for col, val in ((AuditLog.entity_type, entity_type), (AuditLog.entity_id, entity_id),
-                     (AuditLog.actor_id, actor_id)):
+    for col, val in (
+        (AuditLog.entity_type, entity_type),
+        (AuditLog.entity_id, entity_id),
+        (AuditLog.actor_id, actor_id),
+    ):
         if val:
             stmt = stmt.where(col == val)
     if action:
@@ -136,8 +184,15 @@ def audit_logs(db: DB, paging: Paging, p: Annotated[Principal, Depends(require("
         stmt = stmt.where(AuditLog.created_at >= since)
     if until:
         stmt = stmt.where(AuditLog.created_at <= until)
-    items, total = paginate(db, stmt, model=AuditLog, page=paging.page, page_size=paging.page_size, sort=paging.sort,
-                            allowed_sorts={"created_at"})
+    items, total = paginate(
+        db,
+        stmt,
+        model=AuditLog,
+        page=paging.page,
+        page_size=paging.page_size,
+        sort=paging.sort,
+        allowed_sorts={"created_at"},
+    )
     return {"items": items, "total": total, "page": paging.page, "page_size": paging.page_size}
 
 
@@ -149,16 +204,23 @@ def get_policy(db: DB, p: Annotated[Principal, Depends(require("governance:read"
 
 
 @router.put("/governance/policy", response_model=GovernancePolicy)
-def put_policy(data: GovernancePolicy, db: DB,
-               p: Annotated[Principal, Depends(require("governance:manage"))]) -> GovernancePolicy:
+def put_policy(
+    data: GovernancePolicy, db: DB, p: Annotated[Principal, Depends(require("governance:manage"))]
+) -> GovernancePolicy:
     org = db.get(Organization, p.organization_id)
     assert org
     before = dict(org.settings)
     payload = data.model_dump()
     org.data_retention_days = payload.pop("data_retention_days")
     org.settings = {**org.settings, **payload}
-    audit(db, action="governance.policy_updated", entity_type="organization", entity_id=org.id, principal=p,
-          changes={"before": before, "after": org.settings})
+    audit(
+        db,
+        action="governance.policy_updated",
+        entity_type="organization",
+        entity_id=org.id,
+        principal=p,
+        changes={"before": before, "after": org.settings},
+    )
     db.commit()
     return data
 
@@ -166,7 +228,13 @@ def put_policy(data: GovernancePolicy, db: DB,
 @router.post("/governance/retention/run", response_model=dict, summary="Apply the data-retention policy now")
 def run_retention(db: DB, p: Annotated[Principal, Depends(require("governance:manage"))]) -> dict:
     n = governance.retention_purge(db, org_id=p.organization_id)
-    audit(db, action="governance.retention_run", entity_type="organization", entity_id=p.organization_id,
-          principal=p, changes={"anonymized": n})
+    audit(
+        db,
+        action="governance.retention_run",
+        entity_type="organization",
+        entity_id=p.organization_id,
+        principal=p,
+        changes={"anonymized": n},
+    )
     db.commit()
     return {"anonymized": n}

@@ -85,8 +85,10 @@ class BaseAgent(ABC, Generic[I, O]):
         )
         ctx.db.add(execution)
         ctx.db.flush()
-        state = RunState(provider=self.llm.name if self.llm.generative else "local",
-                         model=self.llm.model if self.llm.generative else "deterministic-v1")
+        state = RunState(
+            provider=self.llm.name if self.llm.generative else "local",
+            model=self.llm.model if self.llm.generative else "deterministic-v1",
+        )
         started = time.perf_counter()
         try:
             output = self.execute(ctx, payload, state)
@@ -107,8 +109,12 @@ class BaseAgent(ABC, Generic[I, O]):
         execution.latency_ms = int((time.perf_counter() - started) * 1000)
         ctx.db.flush()
         log_event(
-            logger, "agent_succeeded", agent=self.name.value, latency_ms=execution.latency_ms,
-            flags=state.flags, provider=state.provider,
+            logger,
+            "agent_succeeded",
+            agent=self.name.value,
+            latency_ms=execution.latency_ms,
+            flags=state.flags,
+            provider=state.provider,
         )
         return AgentOutcome(output=output, execution=execution, flags=state.flags)
 

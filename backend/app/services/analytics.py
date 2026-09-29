@@ -3,6 +3,7 @@ quality-of-hire indicators and fairness (adverse-impact) monitoring."""
 
 from __future__ import annotations
 
+import itertools
 import statistics
 import uuid
 from collections import Counter, defaultdict
@@ -64,11 +65,18 @@ def _reached(app: Application, history: dict[uuid.UUID, set[str]], stage: Applic
     return stage.value in history.get(app.id, set()) or stage_index(ApplicationStage(app.stage)) >= stage_index(stage)
 
 
-def adverse_impact(db: Session, apps: list[Application], history: dict[uuid.UUID, set[str]],
-                   threshold: float = 0.8, min_group: int = 5) -> list[dict]:
+def adverse_impact(
+    db: Session, apps: list[Application], history: dict[uuid.UUID, set[str]], threshold: float = 0.8, min_group: int = 5
+) -> list[dict]:
     """Four-fifths rule on voluntary self-ID data, per selection step. Aggregate only."""
-    eeo = {e.candidate_id: e for e in db.scalars(select(EEOResponse).where(
-        EEOResponse.candidate_id.in_([a.candidate_id for a in apps])))} if apps else {}
+    eeo = (
+        {
+            e.candidate_id: e
+            for e in db.scalars(select(EEOResponse).where(EEOResponse.candidate_id.in_([a.candidate_id for a in apps])))
+        }
+        if apps
+        else {}
+    )
     alerts: list[dict] = []
     for dim in ("gender", "ethnicity", "age_band", "disability"):
         for stage in (ApplicationStage.ASSESSMENT, ApplicationStage.INTERVIEW, ApplicationStage.OFFER):
@@ -89,18 +97,35 @@ def adverse_impact(db: Session, apps: list[Application], history: dict[uuid.UUID
             for g, r in rates.items():
                 ratio = r / best
                 if ratio < threshold:
-                    alerts.append({"dimension": dim, "group": g, "stage": stage.value,
-                                   "selection_rate": round(r * 100, 1), "impact_ratio": round(ratio, 2),
-                                   "sample": groups[g][0]})
+                    alerts.append(
+                        {
+                            "dimension": dim,
+                            "group": g,
+                            "stage": stage.value,
+                            "selection_rate": round(r * 100, 1),
+                            "impact_ratio": round(ratio, 2),
+                            "sample": groups[g][0],
+                        }
+                    )
     return alerts
 
 
-def overview(db: Session, org_id: uuid.UUID, f: Filters, *, sla_days: dict[str, int] | None = None,
-             threshold: float = 0.8) -> dict:
+def overview(
+    db: Session, org_id: uuid.UUID, f: Filters, *, sla_days: dict[str, int] | None = None, threshold: float = 0.8
+) -> dict:
     apps = _apps(db, org_id, f)
     ids = [a.id for a in apps]
-    hist_rows = list(db.scalars(select(ApplicationStageHistory).where(
-        ApplicationStageHistory.application_id.in_(ids)).order_by(ApplicationStageHistory.changed_at))) if ids else []
+    hist_rows = (
+        list(
+            db.scalars(
+                select(ApplicationStageHistory)
+                .where(ApplicationStageHistory.application_id.in_(ids))
+                .order_by(ApplicationStageHistory.changed_at)
+            )
+        )
+        if ids
+        else []
+    )
     history: dict[uuid.UUID, set[str]] = defaultdict(set)
     per_app: dict[uuid.UUID, list[ApplicationStageHistory]] = defaultdict(list)
     for h in hist_rows:
@@ -114,8 +139,8 @@ def overview(db: Session, org_id: uuid.UUID, f: Filters, *, sla_days: dict[str, 
     # Average days spent in each stage (from consecutive history entries).
     durations: dict[str, list[float]] = defaultdict(list)
     for rows in per_app.values():
-        for a, b in zip(rows, rows[1:], strict=False):
-            durations[str(a.to_stage)].append((b.changed_at - a.changed_at).total_seconds() / 86400)
+        for prev, nxt in itertools.pairwise(rows):
+            durations[str(prev.to_stage)].append((nxt.changed_at - prev.changed_at).total_seconds() / 86400)
     avg_days = {k: round(statistics.mean(v), 1) for k, v in durations.items() if v}
     sla = sla_days or {"screened": 3, "interview": 10, "offer": 5, "selection": 3}
     sla_breaches = {k: sum(1 for d in durations.get(k, []) if d > limit) for k, limit in sla.items()}
@@ -123,13 +148,23 @@ def overview(db: Session, org_id: uuid.UUID, f: Filters, *, sla_days: dict[str, 
     tth = [(a.hired_at - a.applied_at).total_seconds() / 86400 for a in hired if a.hired_at]
     job_ids = {a.job_id for a in apps}
     jobs = {j.id: j for j in db.scalars(select(Job).where(Job.id.in_(job_ids)))} if job_ids else {}
-    reqs = {r.id: r for r in db.scalars(select(HiringRequisition).where(
-        HiringRequisition.id.in_([j.requisition_id for j in jobs.values() if j.requisition_id])))} if jobs else {}
+    reqs = (
+        {
+            r.id: r
+            for r in db.scalars(
+                select(HiringRequisition).where(
+                    HiringRequisition.id.in_([j.requisition_id for j in jobs.values() if j.requisition_id])
+                )
+            )
+        }
+        if jobs
+        else {}
+    )
     ttf = []
     for a in hired:
         j = jobs.get(a.job_id)
         r = reqs.get(j.requisition_id) if j and j.requisition_id else None
-        start = (r.approved_at if r and r.approved_at else j.published_at if j else None)
+        start = r.approved_at if r and r.approved_at else j.published_at if j else None
         if start and a.hired_at:
             ttf.append((a.hired_at - start).total_seconds() / 86400)
 
@@ -142,34 +177,59 @@ def overview(db: Session, org_id: uuid.UUID, f: Filters, *, sla_days: dict[str, 
     total_cost = sum(costs_by_job.values())
 
     offers = list(db.scalars(select(Offer).where(Offer.application_id.in_(ids)))) if ids else []
-    sent = [o for o in offers if o.status in (OfferStatus.SENT, OfferStatus.ACCEPTED, OfferStatus.DECLINED,
-                                              OfferStatus.EXPIRED)]
+    sent = [
+        o
+        for o in offers
+        if o.status in (OfferStatus.SENT, OfferStatus.ACCEPTED, OfferStatus.DECLINED, OfferStatus.EXPIRED)
+    ]
     accepted = [o for o in offers if o.status == OfferStatus.ACCEPTED]
 
-    src: dict[str, dict[str, int]] = defaultdict(lambda: {"applications": 0, "screened": 0, "interviews": 0, "hires": 0})
+    src: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"applications": 0, "screened": 0, "interviews": 0, "hires": 0}
+    )
     for a in apps:
         s = src[a.source]
         s["applications"] += 1
-        s["screened"] += int(_reached(a, history, ApplicationStage.ASSESSMENT) or
-                             _reached(a, history, ApplicationStage.INTERVIEW))
+        s["screened"] += int(
+            _reached(a, history, ApplicationStage.ASSESSMENT) or _reached(a, history, ApplicationStage.INTERVIEW)
+        )
         s["interviews"] += int(_reached(a, history, ApplicationStage.INTERVIEW))
         s["hires"] += int(a.stage == ApplicationStage.HIRED)
-    source_eff = [{"source": k, **v, "hire_rate": _pct(v["hires"], v["applications"]) or 0.0}
-                  for k, v in sorted(src.items(), key=lambda kv: -kv[1]["applications"])]
+    source_eff = [
+        {"source": k, **v, "hire_rate": _pct(v["hires"], v["applications"]) or 0.0}
+        for k, v in sorted(src.items(), key=lambda kv: -kv[1]["applications"])
+    ]
 
-    users = {u.id: u.full_name for u in db.scalars(select(User).where(User.organization_id == org_id))}
+    users: dict[uuid.UUID | None, str] = {
+        u.id: u.full_name for u in db.scalars(select(User).where(User.organization_id == org_id))
+    }
     active = [a for a in apps if a.status == "active"]
     recruiter_load = Counter(users.get(a.recruiter_id, "Unassigned") for a in active)
-    hm_load = Counter(users.get(jobs[a.job_id].hiring_manager_id, "Unassigned") if a.job_id in jobs else "Unassigned"
-                      for a in active if a.stage in (ApplicationStage.SCREENED, ApplicationStage.EVALUATION,
-                                                     ApplicationStage.SELECTION, ApplicationStage.INTERVIEW))
+    hm_load = Counter(
+        users.get(jobs[a.job_id].hiring_manager_id, "Unassigned") if a.job_id in jobs else "Unassigned"
+        for a in active
+        if a.stage
+        in (
+            ApplicationStage.SCREENED,
+            ApplicationStage.EVALUATION,
+            ApplicationStage.SELECTION,
+            ApplicationStage.INTERVIEW,
+        )
+    )
     ivs = list(db.scalars(select(Interview).where(Interview.application_id.in_(ids)))) if ids else []
-    interviewer_load = Counter(users.get(i.user_id, "?") for iv in ivs if iv.status == InterviewStatus.SCHEDULED
-                               for i in db.scalars(select(Interviewer).where(Interviewer.interview_id == iv.id)))
+    interviewer_load = Counter(
+        users.get(i.user_id, "?")
+        for iv in ivs
+        if iv.status == InterviewStatus.SCHEDULED
+        for i in db.scalars(select(Interviewer).where(Interviewer.interview_id == iv.id))
+    )
     ar = list(db.scalars(select(AssessmentResult).where(AssessmentResult.application_id.in_(ids)))) if ids else []
     scored = [r for r in ar if r.percentage is not None]
-    cards = list(db.scalars(select(InterviewScorecard).where(
-        InterviewScorecard.interview_id.in_([i.id for i in ivs])))) if ivs else []
+    cards = (
+        list(db.scalars(select(InterviewScorecard).where(InterviewScorecard.interview_id.in_([i.id for i in ivs]))))
+        if ivs
+        else []
+    )
     hired_ids = {a.id for a in hired}
     iv_app = {i.id: i.application_id for i in ivs}
     hired_ratings = [c.overall_rating for c in cards if c.overall_rating and iv_app.get(c.interview_id) in hired_ids]
@@ -180,8 +240,14 @@ def overview(db: Session, org_id: uuid.UUID, f: Filters, *, sla_days: dict[str, 
         "active_applications": len(active),
         "hires": len(hired),
         "funnel": funnel,
-        "screening_conversion": _pct(sum(1 for a in apps if _reached(a, history, ApplicationStage.ASSESSMENT)
-                                         or _reached(a, history, ApplicationStage.INTERVIEW)), screened_n),
+        "screening_conversion": _pct(
+            sum(
+                1
+                for a in apps
+                if _reached(a, history, ApplicationStage.ASSESSMENT) or _reached(a, history, ApplicationStage.INTERVIEW)
+            ),
+            screened_n,
+        ),
         "interview_conversion": _pct(funnel.get("selection", 0), funnel.get("interview", 0)),
         "offer_acceptance_rate": _pct(len(accepted), len(sent)),
         "offers_sent": len(sent),
@@ -197,13 +263,16 @@ def overview(db: Session, org_id: uuid.UUID, f: Filters, *, sla_days: dict[str, 
         "interviewer_workload": dict(interviewer_load),
         "assessment_performance": {
             "completed": len(scored),
-            "avg_percentage": round(statistics.mean(r.percentage for r in scored), 1) if scored else None,  # type: ignore[misc]
+            "avg_percentage": round(statistics.mean(r.percentage for r in scored if r.percentage is not None), 1)
+            if scored
+            else None,
             "pass_rate": _pct(sum(1 for r in scored if r.passed), len(scored)),
         },
         "quality_of_hire": {
             "avg_interview_rating_of_hires": round(statistics.mean(hired_ratings), 2) if hired_ratings else None,
             "avg_match_score_of_hires": round(statistics.mean([a.match_score for a in hired if a.match_score]), 1)
-            if any(a.match_score for a in hired) else None,
+            if any(a.match_score for a in hired)
+            else None,
             "offer_acceptance_rate": _pct(len(accepted), len(sent)),
         },
         "applications_by_week": _by_week(apps),

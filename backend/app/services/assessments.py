@@ -50,8 +50,11 @@ def add_bank_question(db: Session, data: QuestionIn, p: Principal) -> Assessment
 def create(db: Session, data: AssessmentIn, p: Principal) -> Assessment:
     if data.job_id:
         get_scoped(db, Job, data.job_id, p)
-    a = Assessment(organization_id=p.organization_id, created_by_id=p.user_id,
-                   **data.model_dump(exclude={"questions", "bank_question_ids"}))
+    a = Assessment(
+        organization_id=p.organization_id,
+        created_by_id=p.user_id,
+        **data.model_dump(exclude={"questions", "bank_question_ids"}),
+    )
     db.add(a)
     db.flush()
     pos = 0
@@ -64,15 +67,31 @@ def create(db: Session, data: AssessmentIn, p: Principal) -> Assessment:
         a.questions.append(_copy_question(src, p.organization_id, pos))
         pos += 1
     db.flush()
-    audit(db, action="assessment.created", entity_type="assessment", entity_id=a.id, principal=p,
-          changes={"title": a.title, "questions": pos})
+    audit(
+        db,
+        action="assessment.created",
+        entity_type="assessment",
+        entity_id=a.id,
+        principal=p,
+        changes={"title": a.title, "questions": pos},
+    )
     return a
 
 
 def _copy_question(src: AssessmentQuestion, org_id: uuid.UUID, pos: int) -> AssessmentQuestion:
-    return AssessmentQuestion(organization_id=org_id, kind=src.kind, prompt=src.prompt, options=list(src.options),
-                              correct_answer=src.correct_answer, rubric=src.rubric, competency=src.competency,
-                              difficulty=src.difficulty, points=src.points, position=pos, tags=list(src.tags))
+    return AssessmentQuestion(
+        organization_id=org_id,
+        kind=src.kind,
+        prompt=src.prompt,
+        options=list(src.options),
+        correct_answer=src.correct_answer,
+        rubric=src.rubric,
+        competency=src.competency,
+        difficulty=src.difficulty,
+        points=src.points,
+        position=pos,
+        tags=list(src.tags),
+    )
 
 
 def generate(db: Session, data: GenerateAssessmentIn, p: Principal) -> Assessment:
@@ -80,46 +99,100 @@ def generate(db: Session, data: GenerateAssessmentIn, p: Principal) -> Assessmen
     skills = [r.name for r in job.requirements if r.kind == "skill"]
     if not skills:
         raise ValidationFailed("Job has no skill requirements to assess")
-    bank = list(db.scalars(select(AssessmentQuestion).where(AssessmentQuestion.organization_id == p.organization_id,
-                                                            AssessmentQuestion.assessment_id.is_(None))))
-    out = AssessmentBuilderAgent().run(
-        AgentContext(db, p.organization_id, p.user_id),
-        BuildInput(skills=skills, max_questions=data.max_questions,
-                   bank=[BankQuestion(id=q.id, kind=q.kind, competency=q.competency, tags=q.tags,
-                                      difficulty=q.difficulty, points=q.points) for q in bank]),
-        entity_type="job", entity_id=job.id,
-    ).output
+    bank = list(
+        db.scalars(
+            select(AssessmentQuestion).where(
+                AssessmentQuestion.organization_id == p.organization_id, AssessmentQuestion.assessment_id.is_(None)
+            )
+        )
+    )
+    out = (
+        AssessmentBuilderAgent()
+        .run(
+            AgentContext(db, p.organization_id, p.user_id),
+            BuildInput(
+                skills=skills,
+                max_questions=data.max_questions,
+                bank=[
+                    BankQuestion(
+                        id=q.id,
+                        kind=q.kind,
+                        competency=q.competency,
+                        tags=q.tags,
+                        difficulty=q.difficulty,
+                        points=q.points,
+                    )
+                    for q in bank
+                ],
+            ),
+            entity_type="job",
+            entity_id=job.id,
+        )
+        .output
+    )
     if not out.question_ids:
         raise ValidationFailed("No matching questions in the question bank; add questions tagged with job skills")
-    return create(db, AssessmentIn(title=data.title or f"{job.title} assessment", kind=data.kind, job_id=job.id,
-                                   bank_question_ids=out.question_ids,
-                                   instructions=f"Covers: {', '.join(out.coverage)}"), p)
+    return create(
+        db,
+        AssessmentIn(
+            title=data.title or f"{job.title} assessment",
+            kind=data.kind,
+            job_id=job.id,
+            bank_question_ids=out.question_ids,
+            instructions=f"Covers: {', '.join(out.coverage)}",
+        ),
+        p,
+    )
 
 
-def invite(db: Session, app: Application, assessment: Assessment, p: Principal, expires_in_days: int
-           ) -> tuple[AssessmentResult, str]:
+def invite(
+    db: Session, app: Application, assessment: Assessment, p: Principal, expires_in_days: int
+) -> tuple[AssessmentResult, str]:
     if app.stage != ApplicationStage.ASSESSMENT:
         raise InvalidTransition("Application must be in the assessment stage")
     if not assessment.is_active or not assessment.questions:
         raise ValidationFailed("Assessment is inactive or has no questions")
-    if db.scalar(select(AssessmentResult).where(AssessmentResult.assessment_id == assessment.id,
-                                                AssessmentResult.application_id == app.id)):
+    if db.scalar(
+        select(AssessmentResult).where(
+            AssessmentResult.assessment_id == assessment.id, AssessmentResult.application_id == app.id
+        )
+    ):
         raise ConflictError("Candidate already invited to this assessment")
     token = new_opaque_token()
     now = utcnow()
-    res = AssessmentResult(organization_id=p.organization_id, assessment_id=assessment.id, application_id=app.id,
-                           access_token_hash=token_digest(token), invited_at=now,
-                           expires_at=now + timedelta(days=expires_in_days))
+    res = AssessmentResult(
+        organization_id=p.organization_id,
+        assessment_id=assessment.id,
+        application_id=app.id,
+        access_token_hash=token_digest(token),
+        invited_at=now,
+        expires_at=now + timedelta(days=expires_in_days),
+    )
     db.add(res)
     db.flush()
     link = f"{get_settings().public_base_url}/assessment/{token}"
-    queue_candidate_message(db, candidate=app.candidate, template_key="assessment_invitation", application_id=app.id,
-                            sent_by_id=p.user_id, variables={
-                                "job_title": app.job.title, "assessment_title": assessment.title,
-                                "duration": assessment.duration_minutes, "deadline": res.expires_at.date(),
-                                "link": link})
-    audit(db, action="assessment.invited", entity_type="application", entity_id=app.id, principal=p,
-          changes={"assessment_id": str(assessment.id)})
+    queue_candidate_message(
+        db,
+        candidate=app.candidate,
+        template_key="assessment_invitation",
+        application_id=app.id,
+        sent_by_id=p.user_id,
+        variables={
+            "job_title": app.job.title,
+            "assessment_title": assessment.title,
+            "duration": assessment.duration_minutes,
+            "deadline": res.expires_at.date(),
+            "link": link,
+        },
+    )
+    audit(
+        db,
+        action="assessment.invited",
+        entity_type="application",
+        entity_id=app.id,
+        principal=p,
+        changes={"assessment_id": str(assessment.id)},
+    )
     return res, link
 
 
@@ -140,13 +213,30 @@ def start(db: Session, res: AssessmentResult) -> None:
 def _score(db: Session, res: AssessmentResult, answers: dict, overrides: dict[str, float] | None) -> None:
     a = db.get(Assessment, res.assessment_id)
     assert a
-    out = AssessmentScoringAgent().run(
-        AgentContext(db, res.organization_id),
-        ScoreInput(questions=[QuestionForScoring(id=str(q.id), kind=q.kind, points=q.points, competency=q.competency,
-                                                 correct_answer=q.correct_answer, rubric=q.rubric) for q in a.questions],
-                   answers=answers, passing_pct=a.passing_score),
-        entity_type="assessment_result", entity_id=res.id,
-    ).output
+    out = (
+        AssessmentScoringAgent()
+        .run(
+            AgentContext(db, res.organization_id),
+            ScoreInput(
+                questions=[
+                    QuestionForScoring(
+                        id=str(q.id),
+                        kind=q.kind,
+                        points=q.points,
+                        competency=q.competency,
+                        correct_answer=q.correct_answer,
+                        rubric=q.rubric,
+                    )
+                    for q in a.questions
+                ],
+                answers=answers,
+                passing_pct=a.passing_score,
+            ),
+            entity_type="assessment_result",
+            entity_id=res.id,
+        )
+        .output
+    )
     per = {k: v.model_dump() for k, v in out.per_question.items()}
     if overrides:
         for qid, score in overrides.items():
@@ -180,24 +270,48 @@ def submit(db: Session, res: AssessmentResult, answers: dict) -> AssessmentResul
     _score(db, res, clean, None)
     app = db.get(Application, res.application_id)
     assert app
-    notify_users(db, res.organization_id, [app.recruiter_id], kind="assessment_submitted",
-                 title=f"Assessment submitted: {app.candidate.full_name}", link=f"/applications/{app.id}")
-    audit(db, action="assessment.submitted", entity_type="application", entity_id=app.id,
-          organization_id=res.organization_id, actor_type=ActorType.CANDIDATE, actor_id=str(app.candidate_id),
-          changes={"percentage": res.percentage, "status": res.status})
+    notify_users(
+        db,
+        res.organization_id,
+        [app.recruiter_id],
+        kind="assessment_submitted",
+        title=f"Assessment submitted: {app.candidate.full_name}",
+        link=f"/applications/{app.id}",
+    )
+    audit(
+        db,
+        action="assessment.submitted",
+        entity_type="application",
+        entity_id=app.id,
+        organization_id=res.organization_id,
+        actor_type=ActorType.CANDIDATE,
+        actor_id=str(app.candidate_id),
+        changes={"percentage": res.percentage, "status": res.status},
+    )
     _advance_workflow(db, app, res)
     return res
 
 
-def manual_score(db: Session, res: AssessmentResult, overrides: dict[str, float], feedback: str | None,
-                 p: Principal) -> AssessmentResult:
+def manual_score(
+    db: Session, res: AssessmentResult, overrides: dict[str, float], feedback: str | None, p: Principal
+) -> AssessmentResult:
     if res.status not in (AssessmentResultStatus.SUBMITTED, AssessmentResultStatus.SCORED):
         raise InvalidTransition("Only submitted assessments can be scored")
-    _score(db, res, res.answers, {**{k: v["score"] for k, v in res.question_scores.items()
-                                     if not v.get("needs_review")}, **overrides})
+    _score(
+        db,
+        res,
+        res.answers,
+        {**{k: v["score"] for k, v in res.question_scores.items() if not v.get("needs_review")}, **overrides},
+    )
     res.scored_by_id, res.candidate_feedback = p.user_id, feedback
-    audit(db, action="assessment.scored", entity_type="assessment_result", entity_id=res.id, principal=p,
-          changes={"overrides": overrides, "percentage": res.percentage})
+    audit(
+        db,
+        action="assessment.scored",
+        entity_type="assessment_result",
+        entity_id=res.id,
+        principal=p,
+        changes={"overrides": overrides, "percentage": res.percentage},
+    )
     app = db.get(Application, res.application_id)
     assert app
     _advance_workflow(db, app, res, principal=p)
@@ -209,7 +323,12 @@ def _advance_workflow(db: Session, app: Application, res: AssessmentResult, prin
 
     event = "assessment.scored" if res.status == AssessmentResultStatus.SCORED else "assessment.needs_review"
     Orchestrator(db).handle(app, event, principal=principal)
-    if res.status == AssessmentResultStatus.SCORED and res.passed and principal is not None \
-            and app.stage == ApplicationStage.ASSESSMENT:
-        app_service.move_stage(db, app, ApplicationStage.INTERVIEW, principal=principal,
-                               reason=f"Assessment passed ({res.percentage}%)")
+    if (
+        res.status == AssessmentResultStatus.SCORED
+        and res.passed
+        and principal is not None
+        and app.stage == ApplicationStage.ASSESSMENT
+    ):
+        app_service.move_stage(
+            db, app, ApplicationStage.INTERVIEW, principal=principal, reason=f"Assessment passed ({res.percentage}%)"
+        )

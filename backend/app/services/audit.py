@@ -37,8 +37,14 @@ def audit(
 ) -> AuditLog:
     entry = AuditLog(
         organization_id=organization_id or (principal.organization_id if principal else None),
-        actor_type=actor_type or (ActorType.CANDIDATE if principal and principal.is_candidate else
-                                  ActorType.USER if principal else ActorType.SYSTEM),
+        actor_type=actor_type
+        or (
+            ActorType.CANDIDATE
+            if principal and principal.is_candidate
+            else ActorType.USER
+            if principal
+            else ActorType.SYSTEM
+        ),
         actor_id=actor_id or (str(principal.user_id) if principal else None),
         action=action,
         entity_type=entity_type,

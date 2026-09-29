@@ -9,8 +9,13 @@ from app.ai.agents.matching import MatchInput, MatchOutput, compute_match
 from app.ai.guardrails import scrub_protected, validate_ai_rationale, wrap_untrusted
 from app.domain.enums import AgentName, Recommendation
 
-REC_ORDER = [Recommendation.STRONG_NO, Recommendation.NO, Recommendation.MAYBE, Recommendation.YES,
-             Recommendation.STRONG_YES]
+REC_ORDER = [
+    Recommendation.STRONG_NO,
+    Recommendation.NO,
+    Recommendation.MAYBE,
+    Recommendation.YES,
+    Recommendation.STRONG_YES,
+]
 
 
 class KnockoutQuestion(BaseModel):
@@ -26,7 +31,7 @@ class ScreeningInput(BaseModel):
     answers: dict[str, bool | str] = Field(default_factory=dict)
     candidate_text: str = ""  # sanitized CV / cover letter text (untrusted)
     security_flags: list[str] = Field(default_factory=list)
-    thresholds: dict[str, float] = Field(default_factory=lambda: {"strong_yes": 80, "yes": 65, "maybe": 45})
+    thresholds: dict[str, float] = Field(default_factory=lambda: {"strong_yes": 80.0, "yes": 65.0, "maybe": 45.0})
 
 
 class RuleResult(BaseModel):
@@ -100,7 +105,10 @@ class ScreeningAgent(BaseAgent[ScreeningInput, ScreeningOutput]):
         match = compute_match(payload.match_input)
         rules: list[RuleResult] = [
             RuleResult(
-                rule=f"{m.kind}: {m.requirement}", passed=m.matched, mandatory=m.mandatory, detail=m.detail,
+                rule=f"{m.kind}: {m.requirement}",
+                passed=m.matched,
+                mandatory=m.mandatory,
+                detail=m.detail,
                 evidence=m.evidence,
             )
             for m in match.matches
@@ -110,7 +118,9 @@ class ScreeningAgent(BaseAgent[ScreeningInput, ScreeningOutput]):
             passed = ans is not None and str(ans).strip().lower() == str(q.expected).strip().lower()
             rules.append(
                 RuleResult(
-                    rule=f"knockout: {q.question}", passed=passed, mandatory=True,
+                    rule=f"knockout: {q.question}",
+                    passed=passed,
+                    mandatory=True,
                     detail="Answer matches requirement" if passed else f"Answer '{ans}' does not meet requirement",
                     evidence=None if ans is None else str(ans),
                 )
@@ -119,12 +129,18 @@ class ScreeningAgent(BaseAgent[ScreeningInput, ScreeningOutput]):
         eligible = all(r.passed for r in rules if r.mandatory and not r.rule.startswith("work_authorization"))
         facts = [
             Fact(statement=m.detail, evidence=m.evidence, source="candidate_material")
-            for m in match.matches if m.evidence
+            for m in match.matches
+            if m.evidence
         ]
         for q in payload.knockout_questions:
             if q.id in payload.answers:
-                facts.append(Fact(statement=f"Answered '{q.question}'", evidence=str(payload.answers[q.id]),
-                                  source="application_form"))
+                facts.append(
+                    Fact(
+                        statement=f"Answered '{q.question}'",
+                        evidence=str(payload.answers[q.id]),
+                        source="application_form",
+                    )
+                )
         det_rec = deterministic_recommendation(eligible, match.score, payload.thresholds)
         strengths = [m.requirement for m in match.matches if m.matched and m.weight >= 1]
         gaps = [m.detail for m in match.matches if not m.matched]
@@ -133,7 +149,8 @@ class ScreeningAgent(BaseAgent[ScreeningInput, ScreeningOutput]):
         ] + [Interpretation(kind="gap", text=g, ai_generated=False) for g in gaps[:8]]
         interpretations += [
             Interpretation(kind="probe", text=f"Probe depth of experience with {m.requirement}", ai_generated=False)
-            for m in match.matches if 0 < m.partial < 1
+            for m in match.matches
+            if 0 < m.partial < 1
         ][:5]
         summary = (
             f"{'Meets' if eligible else 'Does not meet'} mandatory criteria for {payload.job_title}. "
@@ -145,11 +162,19 @@ class ScreeningAgent(BaseAgent[ScreeningInput, ScreeningOutput]):
         suspicious = any(f.startswith("injection:") for f in payload.security_flags)
         if suspicious:
             state.flags.append("llm_skipped:suspected_prompt_injection")
-            interpretations.append(Interpretation(
-                kind="security", ai_generated=False,
-                text="Candidate document contains instruction-like content; AI interpretation withheld. "
-                     "Review the original document manually.",
-            ))
+            # A manipulated document is untrustworthy evidence (e.g. keyword stuffing): never let it earn
+            # a positive recommendation on its own — a human must read the original.
+            if REC_ORDER.index(recommendation) > REC_ORDER.index(Recommendation.MAYBE):
+                recommendation = Recommendation.MAYBE
+                state.flags.append("recommendation_capped:suspicious_document")
+            interpretations.append(
+                Interpretation(
+                    kind="security",
+                    ai_generated=False,
+                    text="Candidate document contains instruction-like content; AI interpretation withheld. "
+                    "Review the original document manually.",
+                )
+            )
         else:
             llm = self.ask_llm(state, schema=LLMScreening, user=self._build_prompt(payload, rules, match))
             if llm is not None:
@@ -177,14 +202,22 @@ class ScreeningAgent(BaseAgent[ScreeningInput, ScreeningOutput]):
                 if abs(REC_ORDER.index(recommendation) - REC_ORDER.index(det_rec)) >= 2:
                     state.flags.append("ai_rules_disagreement")
         return ScreeningOutput(
-            eligible=eligible, score=match.score, recommendation=recommendation, rule_results=rules,
-            facts=facts, interpretations=interpretations, summary=summary, match=match,
+            eligible=eligible,
+            score=match.score,
+            recommendation=recommendation,
+            rule_results=rules,
+            facts=facts,
+            interpretations=interpretations,
+            summary=summary,
+            match=match,
         )
 
     @staticmethod
     def _build_prompt(payload: ScreeningInput, rules: list[RuleResult], match: MatchOutput) -> str:
-        rule_lines = "\n".join(f"- [{'PASS' if r.passed else 'FAIL'}{' (mandatory)' if r.mandatory else ''}] "
-                               f"{r.rule}: {r.detail}" for r in rules)
+        rule_lines = "\n".join(
+            f"- [{'PASS' if r.passed else 'FAIL'}{' (mandatory)' if r.mandatory else ''}] {r.rule}: {r.detail}"
+            for r in rules
+        )
         return (
             f"Job title: {payload.job_title}\n"
             f"Deterministic match score: {match.score}/100 (coverage {match.coverage_score})\n"

@@ -14,15 +14,26 @@ from app.domain.permissions import ALL_PERMISSIONS, ROLE_PERMISSIONS, Role
 from app.models.org import Department, Organization, RoleDef, User
 from app.models.recruitment import CompensationBand
 from app.schemas.org import (
-    CompensationBandIn, DepartmentIn, OrganizationCreate, OrganizationUpdate, RoleIn, UserCreate, UserUpdate,
+    CompensationBandIn,
+    DepartmentIn,
+    OrganizationCreate,
+    OrganizationUpdate,
+    RoleIn,
+    UserCreate,
+    UserUpdate,
 )
 from app.services.audit import audit, diff
 from app.services.common import get_scoped
 
 ROLE_NAMES = {
-    Role.SUPER_ADMIN: "Super Admin", Role.ORG_ADMIN: "Organization Admin", Role.HR_MANAGER: "HR Manager",
-    Role.RECRUITER: "Recruiter", Role.HIRING_MANAGER: "Hiring Manager", Role.INTERVIEWER: "Interviewer",
-    Role.FINANCE_APPROVER: "Finance / Approver", Role.CANDIDATE: "Candidate",
+    Role.SUPER_ADMIN: "Super Admin",
+    Role.ORG_ADMIN: "Organization Admin",
+    Role.HR_MANAGER: "HR Manager",
+    Role.RECRUITER: "Recruiter",
+    Role.HIRING_MANAGER: "Hiring Manager",
+    Role.INTERVIEWER: "Interviewer",
+    Role.FINANCE_APPROVER: "Finance / Approver",
+    Role.CANDIDATE: "Candidate",
 }
 
 
@@ -32,8 +43,9 @@ def ensure_system_roles(db: Session) -> dict[str, RoleDef]:
     for role, perms in ROLE_PERMISSIONS.items():
         r = existing.get(role.value)
         if r is None:
-            r = RoleDef(organization_id=None, key=role.value, name=ROLE_NAMES[role], permissions=sorted(perms),
-                        is_system=True)
+            r = RoleDef(
+                organization_id=None, key=role.value, name=ROLE_NAMES[role], permissions=sorted(perms), is_system=True
+            )
             db.add(r)
             existing[role.value] = r
         elif set(r.permissions) != set(perms):
@@ -43,8 +55,13 @@ def ensure_system_roles(db: Session) -> dict[str, RoleDef]:
 
 
 def resolve_roles(db: Session, org_id: uuid.UUID | None, keys: list[str], *, actor: Principal | None) -> list[RoleDef]:
-    roles = list(db.scalars(select(RoleDef).where(
-        RoleDef.key.in_(keys), (RoleDef.organization_id.is_(None)) | (RoleDef.organization_id == org_id))))
+    roles = list(
+        db.scalars(
+            select(RoleDef).where(
+                RoleDef.key.in_(keys), (RoleDef.organization_id.is_(None)) | (RoleDef.organization_id == org_id)
+            )
+        )
+    )
     found = {r.key for r in roles}
     missing = set(keys) - found
     if missing:
@@ -66,18 +83,41 @@ def create_organization(db: Session, data: OrganizationCreate, actor: Principal 
         raise ConflictError("Admin e-mail already registered")
     validate_password_strength(data.admin_password)
     ensure_system_roles(db)
-    org = Organization(name=data.name, slug=data.slug, timezone=data.timezone, default_currency=data.default_currency,
-                       settings={"ai_screening_enabled": True, "auto_screen_on_apply": True,
-                                 "bias_monitoring_enabled": True, "require_consent_for_ai": True})
+    org = Organization(
+        name=data.name,
+        slug=data.slug,
+        timezone=data.timezone,
+        default_currency=data.default_currency,
+        settings={
+            "ai_screening_enabled": True,
+            "auto_screen_on_apply": True,
+            "bias_monitoring_enabled": True,
+            "require_consent_for_ai": True,
+        },
+    )
     db.add(org)
     db.flush()
-    admin_role = db.scalar(select(RoleDef).where(RoleDef.key == Role.ORG_ADMIN.value, RoleDef.organization_id.is_(None)))
-    user = User(organization_id=org.id, email=data.admin_email.lower(), full_name=data.admin_full_name,
-                password_hash=hash_password(data.admin_password), roles=[admin_role] if admin_role else [])
+    admin_role = db.scalar(
+        select(RoleDef).where(RoleDef.key == Role.ORG_ADMIN.value, RoleDef.organization_id.is_(None))
+    )
+    user = User(
+        organization_id=org.id,
+        email=data.admin_email.lower(),
+        full_name=data.admin_full_name,
+        password_hash=hash_password(data.admin_password),
+        roles=[admin_role] if admin_role else [],
+    )
     db.add(user)
     db.flush()
-    audit(db, action="organization.created", entity_type="organization", entity_id=org.id, principal=actor,
-          organization_id=org.id, changes={"name": org.name, "slug": org.slug, "admin": user.email})
+    audit(
+        db,
+        action="organization.created",
+        entity_type="organization",
+        entity_id=org.id,
+        principal=actor,
+        organization_id=org.id,
+        changes={"name": org.name, "slug": org.slug, "admin": user.email},
+    )
     return org
 
 
@@ -98,13 +138,26 @@ def create_user(db: Session, data: UserCreate, p: Principal) -> User:
     roles = resolve_roles(db, p.organization_id, data.roles, actor=p)
     if data.password:
         validate_password_strength(data.password)
-    user = User(organization_id=p.organization_id, email=data.email.lower(), full_name=data.full_name,
-                title=data.title, department_id=data.department_id, timezone=data.timezone,
-                password_hash=hash_password(data.password) if data.password else None, roles=roles)
+    user = User(
+        organization_id=p.organization_id,
+        email=data.email.lower(),
+        full_name=data.full_name,
+        title=data.title,
+        department_id=data.department_id,
+        timezone=data.timezone,
+        password_hash=hash_password(data.password) if data.password else None,
+        roles=roles,
+    )
     db.add(user)
     db.flush()
-    audit(db, action="user.created", entity_type="user", entity_id=user.id, principal=p,
-          changes={"email": user.email, "roles": data.roles})
+    audit(
+        db,
+        action="user.created",
+        entity_type="user",
+        entity_id=user.id,
+        principal=p,
+        changes={"email": user.email, "roles": data.roles},
+    )
     return user
 
 
@@ -132,14 +185,21 @@ def update_user(db: Session, user: User, data: UserUpdate, p: Principal) -> User
 
 
 def create_department(db: Session, data: DepartmentIn, p: Principal) -> Department:
-    if db.scalar(select(Department).where(Department.organization_id == p.organization_id,
-                                          Department.name == data.name)):
+    if db.scalar(
+        select(Department).where(Department.organization_id == p.organization_id, Department.name == data.name)
+    ):
         raise ConflictError("Department already exists")
     dep = Department(organization_id=p.organization_id, **data.model_dump())
     db.add(dep)
     db.flush()
-    audit(db, action="department.created", entity_type="department", entity_id=dep.id, principal=p,
-          changes=data.model_dump())
+    audit(
+        db,
+        action="department.created",
+        entity_type="department",
+        entity_id=dep.id,
+        principal=p,
+        changes=data.model_dump(),
+    )
     return dep
 
 
@@ -151,8 +211,14 @@ def create_role(db: Session, data: RoleIn, p: Principal) -> RoleDef:
         raise PermissionDenied("Custom roles cannot exceed your own permissions")
     if data.key in {r.value for r in Role}:
         raise ConflictError("Role key is reserved")
-    role = RoleDef(organization_id=p.organization_id, key=data.key, name=data.name, description=data.description,
-                   permissions=sorted(set(data.permissions)), is_system=False)
+    role = RoleDef(
+        organization_id=p.organization_id,
+        key=data.key,
+        name=data.name,
+        description=data.description,
+        permissions=sorted(set(data.permissions)),
+        is_system=False,
+    )
     db.add(role)
     db.flush()
     audit(db, action="role.created", entity_type="role", entity_id=role.id, principal=p, changes=data.model_dump())
@@ -163,6 +229,12 @@ def create_band(db: Session, data: CompensationBandIn, p: Principal) -> Compensa
     band = CompensationBand(organization_id=p.organization_id, **data.model_dump())
     db.add(band)
     db.flush()
-    audit(db, action="compensation_band.created", entity_type="compensation_band", entity_id=band.id, principal=p,
-          changes=data.model_dump())
+    audit(
+        db,
+        action="compensation_band.created",
+        entity_type="compensation_band",
+        entity_id=band.id,
+        principal=p,
+        changes=data.model_dump(),
+    )
     return band

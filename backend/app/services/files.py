@@ -60,8 +60,10 @@ def sniff_content_type(data: bytes, declared: str, filename: str) -> str:
         real = "text/markdown" if fname.endswith(".md") else "text/plain"
     if not any(fname.endswith(ext) for ext in ALLOWED[real]):
         raise UnsafeContent("File extension does not match file content")
-    if declared and declared not in (real, "application/octet-stream") and not (
-        declared.startswith("text/") and real.startswith("text/")
+    if (
+        declared
+        and declared not in (real, "application/octet-stream")
+        and not (declared.startswith("text/") and real.startswith("text/"))
     ):
         raise UnsafeContent("Declared content type does not match file content")
     if real == "application/pdf" and re.search(rb"/(JavaScript|JS|Launch|EmbeddedFile)\b", data):
@@ -83,7 +85,7 @@ def _clamd_scan(host: str, port: int, data: bytes, timeout: float = 30.0) -> Sca
     with socket.create_connection((host, port), timeout=timeout) as sock:
         sock.sendall(b"zINSTREAM\0")
         for i in range(0, len(data), 8192):
-            chunk = data[i: i + 8192]
+            chunk = data[i : i + 8192]
             sock.sendall(struct.pack("!L", len(chunk)) + chunk)
         sock.sendall(struct.pack("!L", 0))
         reply = sock.recv(4096).decode(errors="replace").strip("\0\n ")

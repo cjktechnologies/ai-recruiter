@@ -42,8 +42,15 @@ def lookup(db: Session, scope: str, key: str, fingerprint: str) -> IdempotencyKe
 
 
 def store(db: Session, scope: str, key: str, fingerprint: str, status_code: int, body: Any) -> None:
-    db.add(IdempotencyKey(scope=scope, key=key, request_hash=fingerprint, status_code=status_code,
-                          response_body=jsonable_encoder(body)))
+    db.add(
+        IdempotencyKey(
+            scope=scope,
+            key=key,
+            request_hash=fingerprint,
+            status_code=status_code,
+            response_body=jsonable_encoder(body),
+        )
+    )
     try:
         db.flush()
     except IntegrityError as exc:

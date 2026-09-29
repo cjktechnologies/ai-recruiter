@@ -52,7 +52,11 @@ _SENT = re.compile(r"(?<=[.!?])\s+|\n+")
 def _candidate_lines(transcript: str) -> list[str]:
     """Prefer lines attributed to the candidate ("Candidate:" / "C:"); fall back to all sentences."""
     lines = [ln.strip() for ln in transcript.splitlines() if ln.strip()]
-    cand = [re.sub(r"^(candidate|c)\s*:\s*", "", ln, flags=re.I) for ln in lines if re.match(r"^(candidate|c)\s*:", ln, re.I)]
+    cand = [
+        re.sub(r"^(candidate|c)\s*:\s*", "", ln, flags=re.I)
+        for ln in lines
+        if re.match(r"^(candidate|c)\s*:", ln, re.I)
+    ]
     return cand or [s.strip() for s in _SENT.split(transcript) if s.strip()]
 
 
@@ -62,8 +66,12 @@ def extract_evidence(transcript: str, competencies: list[Competency]) -> list[Co
     for comp in competencies:
         keys = [k.lower() for k in (comp.keywords or re.findall(r"[a-zA-Z]{4,}", comp.name))]
         quotes = [s for s in sentences if any(k in s.lower() for k in keys)][:4]
-        strength = "none" if not quotes else "limited" if len(quotes) == 1 else "moderate" if len(quotes) < 4 else "strong"
-        out.append(CompetencyEvidence(competency=comp.name, quotes=[q[:300] for q in quotes], evidence_strength=strength))
+        strength = (
+            "none" if not quotes else "limited" if len(quotes) == 1 else "moderate" if len(quotes) < 4 else "strong"
+        )
+        out.append(
+            CompetencyEvidence(competency=comp.name, quotes=[q[:300] for q in quotes], evidence_strength=strength)
+        )
     return out
 
 
@@ -85,18 +93,25 @@ class InterviewAssistantAgent(BaseAgent[InterviewInput, InterviewSummary]):
             f"{sum(1 for e in evidence if e.quotes)}. Limited or no evidence for: {', '.join(gaps) or 'none'}."
         )
         result = InterviewSummary(
-            summary=summary, competency_evidence=evidence,
+            summary=summary,
+            competency_evidence=evidence,
             follow_up_questions=[f"Ask for a concrete example demonstrating {g}." for g in gaps],
-            facts=facts, interpretations=[], ai_generated=False,
+            facts=facts,
+            interpretations=[],
+            ai_generated=False,
         )
         if clean.is_suspicious:
             state.flags.append("llm_skipped:suspected_prompt_injection")
             return result
         comps = "\n".join(f"- {c.name}: {c.description or ''}" for c in p.competencies)
-        llm = self.ask_llm(state, schema=LLMInterview, user=(
-            f"Competencies:\n{comps}\n\nInterviewer notes: {p.interviewer_notes or 'none'}\n\n"
-            f"{wrap_untrusted('interview_transcript', clean.text)}"
-        ))
+        llm = self.ask_llm(
+            state,
+            schema=LLMInterview,
+            user=(
+                f"Competencies:\n{comps}\n\nInterviewer notes: {p.interviewer_notes or 'none'}\n\n"
+                f"{wrap_untrusted('interview_transcript', clean.text)}"
+            ),
+        )
         if llm:
             flags = validate_ai_rationale(llm.summary)
             if flags:
@@ -105,8 +120,11 @@ class InterviewAssistantAgent(BaseAgent[InterviewInput, InterviewSummary]):
             for ev in llm.competency_evidence:
                 ev.ai_generated = True
             result = InterviewSummary(
-                summary=llm.summary, competency_evidence=llm.competency_evidence,
-                follow_up_questions=llm.follow_up_questions, facts=facts,
-                interpretations=[llm.summary], ai_generated=True,
+                summary=llm.summary,
+                competency_evidence=llm.competency_evidence,
+                follow_up_questions=llm.follow_up_questions,
+                facts=facts,
+                interpretations=[llm.summary],
+                ai_generated=True,
             )
         return result

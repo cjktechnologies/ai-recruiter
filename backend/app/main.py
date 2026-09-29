@@ -38,8 +38,15 @@ AI-assisted recruitment operations platform: ATS + CRM + agent orchestration.
 
 
 def _problem(status: int, title: str, code: str, detail: str | None, **extra: object) -> JSONResponse:
-    body = {"type": "about:blank", "title": title, "status": status, "detail": detail, "code": code,
-            "request_id": request_id_ctx.get(), **extra}
+    body = {
+        "type": "about:blank",
+        "title": title,
+        "status": status,
+        "detail": detail,
+        "code": code,
+        "request_id": request_id_ctx.get(),
+        **extra,
+    }
     headers = {"Retry-After": str(extra["retry_after"])} if "retry_after" in extra else None
     return JSONResponse(body, status_code=status, media_type="application/problem+json", headers=headers)
 
@@ -48,19 +55,43 @@ def create_app() -> FastAPI:
     s = get_settings()
     configure_logging(s.log_level, s.log_json)
     app = FastAPI(
-        title=f"{s.app_name} API", version="1.0.0", description=API_DESCRIPTION,
-        openapi_url=f"{s.api_prefix}/openapi.json", docs_url="/docs", redoc_url="/redoc",
-        openapi_tags=[{"name": t} for t in (
-            "Authentication", "Organizations & Users", "Requisitions", "Jobs & Sourcing", "Candidates",
-            "Applications, Screening & Selection", "Assessments", "Interviews & Scheduling", "Offers", "Onboarding",
-            "Analytics", "AI Agents & Governance", "Notifications, Integrations, Audit & Governance",
-            "Candidate portal", "Public (careers site & candidate links)", "Health")],
+        title=f"{s.app_name} API",
+        version="1.0.0",
+        description=API_DESCRIPTION,
+        openapi_url=f"{s.api_prefix}/openapi.json",
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_tags=[
+            {"name": t}
+            for t in (
+                "Authentication",
+                "Organizations & Users",
+                "Requisitions",
+                "Jobs & Sourcing",
+                "Candidates",
+                "Applications, Screening & Selection",
+                "Assessments",
+                "Interviews & Scheduling",
+                "Offers",
+                "Onboarding",
+                "Analytics",
+                "AI Agents & Governance",
+                "Notifications, Integrations, Audit & Governance",
+                "Candidate portal",
+                "Public (careers site & candidate links)",
+                "Health",
+            )
+        ],
     )
     app.add_middleware(RequestContextMiddleware)
-    app.add_middleware(CORSMiddleware, allow_origins=s.cors_origins, allow_credentials=True,
-                       allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-                       allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Organization-Id",
-                                      "X-Request-ID"], expose_headers=["X-Request-ID", "Retry-After"])
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=s.cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Organization-Id", "X-Request-ID"],
+        expose_headers=["X-Request-ID", "Retry-After"],
+    )
 
     @app.exception_handler(AppError)
     async def app_error(_: Request, exc: AppError) -> JSONResponse:
@@ -90,19 +121,34 @@ def create_app() -> FastAPI:
             return app.openapi_schema
         from fastapi.openapi.utils import get_openapi
 
-        schema = get_openapi(title=app.title, version=app.version, description=app.description, routes=app.routes,
-                             tags=app.openapi_tags)
+        schema = get_openapi(
+            title=app.title, version=app.version, description=app.description, routes=app.routes, tags=app.openapi_tags
+        )
         schema["components"]["schemas"]["Problem"] = {
-            "type": "object", "required": ["title", "status", "code"],
-            "properties": {k: {"type": t} for k, t in (("type", "string"), ("title", "string"), ("status", "integer"),
-                                                         ("detail", "string"), ("code", "string"),
-                                                         ("request_id", "string"))}}
+            "type": "object",
+            "required": ["title", "status", "code"],
+            "properties": {
+                k: {"type": t}
+                for k, t in (
+                    ("type", "string"),
+                    ("title", "string"),
+                    ("status", "integer"),
+                    ("detail", "string"),
+                    ("code", "string"),
+                    ("request_id", "string"),
+                )
+            },
+        }
         problem = {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}
         for path_item in schema["paths"].values():
             for op in path_item.values():
-                for code, desc in (("401", "Unauthenticated"), ("403", "Forbidden"), ("404", "Not found"),
-                                   ("409", "Conflict / invalid transition / approval required"),
-                                   ("429", "Rate limited")):
+                for code, desc in (
+                    ("401", "Unauthenticated"),
+                    ("403", "Forbidden"),
+                    ("404", "Not found"),
+                    ("409", "Conflict / invalid transition / approval required"),
+                    ("429", "Rate limited"),
+                ):
                     op.setdefault("responses", {}).setdefault(code, {"description": desc, "content": problem})
         schema["servers"] = [{"url": "/"}]
         app.openapi_schema = schema

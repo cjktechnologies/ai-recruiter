@@ -36,8 +36,9 @@ class LLMProvider(Protocol):
     model: str
     generative: bool
 
-    def complete_json(self, *, system: str, user: str, schema: type[T], max_tokens: int | None = None) -> LLMResult[T]:
-        ...
+    def complete_json(
+        self, *, system: str, user: str, schema: type[T], max_tokens: int | None = None
+    ) -> LLMResult[T]: ...
 
 
 def strict_json_schema(schema: type[BaseModel]) -> dict[str, Any]:

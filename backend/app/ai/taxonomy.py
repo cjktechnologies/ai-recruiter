@@ -118,8 +118,25 @@ SKILLS: dict[str, tuple[str, list[str]]] = {
 }
 
 LANGUAGES = [
-    "English", "Spanish", "French", "German", "Portuguese", "Italian", "Dutch", "Mandarin", "Cantonese",
-    "Japanese", "Korean", "Arabic", "Hindi", "Swahili", "Russian", "Polish", "Turkish", "Afrikaans", "Zulu",
+    "English",
+    "Spanish",
+    "French",
+    "German",
+    "Portuguese",
+    "Italian",
+    "Dutch",
+    "Mandarin",
+    "Cantonese",
+    "Japanese",
+    "Korean",
+    "Arabic",
+    "Hindi",
+    "Swahili",
+    "Russian",
+    "Polish",
+    "Turkish",
+    "Afrikaans",
+    "Zulu",
 ]
 
 

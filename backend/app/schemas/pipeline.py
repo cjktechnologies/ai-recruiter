@@ -7,8 +7,19 @@ from decimal import Decimal
 from pydantic import BaseModel, Field
 
 from app.domain.enums import (
-    ApplicationStage, ApplicationStatus, ApprovalStatus, AssessmentKind, AssessmentResultStatus, EvaluationDecision,
-    InterviewKind, InterviewStatus, OfferStatus, QuestionKind, Recommendation, ReviewStatus, VerificationStatus,
+    ApplicationStage,
+    ApplicationStatus,
+    ApprovalStatus,
+    AssessmentKind,
+    AssessmentResultStatus,
+    EvaluationDecision,
+    InterviewKind,
+    InterviewStatus,
+    OfferStatus,
+    QuestionKind,
+    Recommendation,
+    ReviewStatus,
+    VerificationStatus,
 )
 from app.schemas.common import ORM, Timestamped
 

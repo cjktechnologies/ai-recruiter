@@ -7,6 +7,7 @@ integration layer (or the vendor's inbound API) consumes. Signature: ``X-Signatu
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
@@ -45,10 +46,8 @@ def post_signed_webhook(url: str, secret: str, event: str, payload: dict, timeou
     except httpx.HTTPError as exc:
         raise ExternalServiceError(f"Webhook delivery failed for {event}") from exc
     ext = None
-    try:
+    with contextlib.suppress(ValueError):
         ext = resp.json().get("id") or resp.json().get("employee_id")
-    except ValueError:
-        pass
     return WebhookResult(resp.status_code, ext)
 
 

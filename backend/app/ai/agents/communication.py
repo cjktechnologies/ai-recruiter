@@ -71,17 +71,25 @@ def render_template(key: str, variables: dict[str, object]) -> tuple[str, str]:
 
 
 DEFAULT_FAQ: list[dict[str, str]] = [
-    {"q": "How long does the hiring process take?",
-     "a": "Most processes take 3-6 weeks from application to offer, depending on the role and interview schedules."},
+    {
+        "q": "How long does the hiring process take?",
+        "a": "Most processes take 3-6 weeks from application to offer, depending on the role and interview schedules.",
+    },
     {"q": "Can I apply for more than one role?", "a": "Yes, you may apply for any roles that match your skills."},
-    {"q": "Do you provide accommodations?",
-     "a": "Yes. Tell us what you need at any stage and we will arrange reasonable accommodations."},
-    {"q": "How is AI used in the process?",
-     "a": "AI helps us organise applications and summarise evidence. Every decision about your application is "
-         "made by a person, and you can ask for a human review at any time."},
-    {"q": "How do I withdraw or delete my data?",
-     "a": "You can withdraw an application in the candidate portal or ask us to delete your data; we will "
-         "confirm once completed."},
+    {
+        "q": "Do you provide accommodations?",
+        "a": "Yes. Tell us what you need at any stage and we will arrange reasonable accommodations.",
+    },
+    {
+        "q": "How is AI used in the process?",
+        "a": "AI helps us organise applications and summarise evidence. Every decision about your application is "
+        "made by a person, and you can ask for a human review at any time.",
+    },
+    {
+        "q": "How do I withdraw or delete my data?",
+        "a": "You can withdraw an application in the candidate portal or ask us to delete your data; we will "
+        "confirm once completed.",
+    },
     {"q": "What is my application status?", "a": "Your current status is shown in the candidate portal."},
 ]
 
@@ -138,26 +146,35 @@ class CommunicationAgent(BaseAgent[ChatInput, ChatOutput]):
         if status_q and p.application_status:
             return ChatOutput(
                 answer=f"Your application for {p.application_status.get('job_title')} is currently at the "
-                       f"'{p.application_status.get('stage')}' stage. We'll contact you as soon as there is an update.",
-                needs_human=False, sources=["application_status"], ai_generated=False,
+                f"'{p.application_status.get('stage')}' stage. We'll contact you as soon as there is an update.",
+                needs_human=False,
+                sources=["application_status"],
+                ai_generated=False,
             )
         if not clean.is_suspicious:
             kb = "\n".join(f"Q: {h['q']}\nA: {h['a']}" for _, h in hits) or "(no relevant entries)"
-            llm = self.ask_llm(state, schema=LLMChat, user=(
-                f"Company: {p.company}\nKnowledge base:\n{kb}\n\n"
-                f"Candidate application status: {p.application_status or 'unknown'}\n\n"
-                f"{wrap_untrusted('candidate_message', clean.text)}"
-            ))
+            llm = self.ask_llm(
+                state,
+                schema=LLMChat,
+                user=(
+                    f"Company: {p.company}\nKnowledge base:\n{kb}\n\n"
+                    f"Candidate application status: {p.application_status or 'unknown'}\n\n"
+                    f"{wrap_untrusted('candidate_message', clean.text)}"
+                ),
+            )
             if llm:
                 if llm.security_notes:
                     state.flags.append("llm_reported_security_notes")
-                return ChatOutput(answer=llm.answer, needs_human=llm.needs_human,
-                                  sources=[h["q"] for _, h in hits], ai_generated=True)
+                return ChatOutput(
+                    answer=llm.answer, needs_human=llm.needs_human, sources=[h["q"] for _, h in hits], ai_generated=True
+                )
         if hits and hits[0][0] >= 0.34 and not clean.is_suspicious:
             best = hits[0][1]
             return ChatOutput(answer=best["a"], needs_human=False, sources=[best["q"]], ai_generated=False)
         return ChatOutput(
             answer="Thanks for your question. I've passed it to a member of our recruitment team, who will get "
-                   "back to you shortly.",
-            needs_human=True, sources=[], ai_generated=False,
+            "back to you shortly.",
+            needs_human=True,
+            sources=[],
+            ai_generated=False,
         )

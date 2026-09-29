@@ -26,17 +26,34 @@ from app.services.notify import notify_role
 
 router = APIRouter(prefix="/portal", tags=["Candidate portal"])
 CandidateP = Annotated[Principal, Depends(require_candidate)]
-PUBLIC_STAGE = {"applied": "Received", "screening": "Under review", "screened": "Under review",
-                "assessment": "Assessment", "interview": "Interviewing", "evaluation": "Interviewing",
-                "selection": "Final review", "verification": "Final review", "offer": "Offer",
-                "hired": "Hired", "rejected": "Closed", "withdrawn": "Withdrawn"}
+PUBLIC_STAGE = {
+    "applied": "Received",
+    "screening": "Under review",
+    "screened": "Under review",
+    "assessment": "Assessment",
+    "interview": "Interviewing",
+    "evaluation": "Interviewing",
+    "selection": "Final review",
+    "verification": "Final review",
+    "offer": "Offer",
+    "hired": "Hired",
+    "rejected": "Closed",
+    "withdrawn": "Withdrawn",
+}
 
 
 @router.get("/applications", response_model=list[dict])
 def my_applications(db: DB, p: CandidateP) -> list[dict]:
     apps = db.scalars(select(Application).where(Application.candidate_id == p.candidate_id))
-    return [{"id": str(a.id), "job_title": a.job.title, "status": PUBLIC_STAGE.get(str(a.stage), "In progress"),
-             "applied_at": a.applied_at.isoformat()} for a in apps]
+    return [
+        {
+            "id": str(a.id),
+            "job_title": a.job.title,
+            "status": PUBLIC_STAGE.get(str(a.stage), "In progress"),
+            "applied_at": a.applied_at.isoformat(),
+        }
+        for a in apps
+    ]
 
 
 @router.post("/applications/{application_id}/withdraw", response_model=Message)
@@ -63,8 +80,14 @@ def erasure_request(db: DB, p: CandidateP) -> Message:
     cand = db.get(Candidate, p.candidate_id)
     assert cand
     audit(db, action="candidate.erasure_requested", entity_type="candidate", entity_id=cand.id, principal=p)
-    notify_role(db, cand.organization_id, "hr_manager", kind="erasure_request",
-                title="Candidate data erasure request", link=f"/candidates/{cand.id}")
+    notify_role(
+        db,
+        cand.organization_id,
+        "hr_manager",
+        kind="erasure_request",
+        title="Candidate data erasure request",
+        link=f"/candidates/{cand.id}",
+    )
     db.commit()
     return Message(message="Your request has been received; we'll confirm by e-mail once completed.")
 
@@ -74,13 +97,27 @@ def chat(data: ChatIn, db: DB, p: CandidateP) -> ChatOut:
     cand = db.get(Candidate, p.candidate_id)
     assert cand
     org = db.get(Organization, cand.organization_id)
-    latest = db.scalar(select(Application).where(Application.candidate_id == cand.id)
-                       .order_by(Application.applied_at.desc()).limit(1))
-    status = {"job_title": latest.job.title, "stage": PUBLIC_STAGE.get(str(latest.stage), "in progress")} \
-        if latest else None
-    out = CommunicationAgent().run(AgentContext(db, cand.organization_id), ChatInput(
-        question=data.message, company=org.name if org else "", candidate_first_name=cand.first_name,
-        application_status=status, faq=((org.settings or {}).get("faq") if org else None) or DEFAULT_FAQ),
-        entity_type="candidate", entity_id=cand.id).output
+    latest = db.scalar(
+        select(Application).where(Application.candidate_id == cand.id).order_by(Application.applied_at.desc()).limit(1)
+    )
+    status = (
+        {"job_title": latest.job.title, "stage": PUBLIC_STAGE.get(str(latest.stage), "in progress")} if latest else None
+    )
+    out = (
+        CommunicationAgent()
+        .run(
+            AgentContext(db, cand.organization_id),
+            ChatInput(
+                question=data.message,
+                company=org.name if org else "",
+                candidate_first_name=cand.first_name,
+                application_status=status,
+                faq=((org.settings or {}).get("faq") if org else None) or DEFAULT_FAQ,
+            ),
+            entity_type="candidate",
+            entity_id=cand.id,
+        )
+        .output
+    )
     db.commit()
     return ChatOut(answer=out.answer, needs_human=out.needs_human, ai_generated=out.ai_generated)

@@ -49,26 +49,34 @@ class Node:
     description: str = ""
 
 
-NODES: dict[str, Node] = {n.name: n for n in [
-    Node("intake", "auto", description="Application received; acknowledgement queued"),
-    Node("screening", "auto", description="Screening Agent runs rule checks and evidence summary"),
-    Node("screening_review", "human", "screening:review", "Recruiter reviews AI screening and decides"),
-    Node("manual_screening", "human", "screening:review", "AI screening unavailable (policy/consent); screen manually"),
-    Node("assessment", "external", "candidate", "Candidate completes the assessment"),
-    Node("assessment_review", "human", "assessments:score", "Recruiter confirms free-text scoring"),
-    Node("interview", "human", "interviews:schedule", "Schedule and conduct interviews; collect scorecards"),
-    Node("evaluation", "auto", description="Evaluation Agent consolidates all evidence"),
-    Node("evaluation_decision", "human", "evaluations:decide", "Hiring manager decides on selection"),
-    Node("selection_approval", "human", "selection:approve", "Selection approval"),
-    Node("verification", "human", "verification:manage", "Reference and background checks"),
-    Node("offer", "human", "offers:create", "Offer Agent drafts an offer for recruiter review"),
-    Node("offer_approval", "human", "offers:approve", "Compensation / offer approval chain"),
-    Node("offer_send", "human", "offers:send", "Recruiter sends the approved offer"),
-    Node("candidate_response", "external", "candidate", "Candidate accepts or declines"),
-    Node("onboarding_handoff", "human", "onboarding:handoff", "Hand over to HRIS / onboarding"),
-    Node("done", "terminal", description="Hired and handed off"),
-    Node("closed", "terminal", description="Rejected, withdrawn or declined"),
-]}
+NODES: dict[str, Node] = {
+    n.name: n
+    for n in [
+        Node("intake", "auto", description="Application received; acknowledgement queued"),
+        Node("screening", "auto", description="Screening Agent runs rule checks and evidence summary"),
+        Node("screening_review", "human", "screening:review", "Recruiter reviews AI screening and decides"),
+        Node(
+            "manual_screening",
+            "human",
+            "screening:review",
+            "AI screening unavailable (policy/consent); screen manually",
+        ),
+        Node("assessment", "external", "candidate", "Candidate completes the assessment"),
+        Node("assessment_review", "human", "assessments:score", "Recruiter confirms free-text scoring"),
+        Node("interview", "human", "interviews:schedule", "Schedule and conduct interviews; collect scorecards"),
+        Node("evaluation", "auto", description="Evaluation Agent consolidates all evidence"),
+        Node("evaluation_decision", "human", "evaluations:decide", "Hiring manager decides on selection"),
+        Node("selection_approval", "human", "selection:approve", "Selection approval"),
+        Node("verification", "human", "verification:manage", "Reference and background checks"),
+        Node("offer", "human", "offers:create", "Offer Agent drafts an offer for recruiter review"),
+        Node("offer_approval", "human", "offers:approve", "Compensation / offer approval chain"),
+        Node("offer_send", "human", "offers:send", "Recruiter sends the approved offer"),
+        Node("candidate_response", "external", "candidate", "Candidate accepts or declines"),
+        Node("onboarding_handoff", "human", "onboarding:handoff", "Hand over to HRIS / onboarding"),
+        Node("done", "terminal", description="Hired and handed off"),
+        Node("closed", "terminal", description="Rejected, withdrawn or declined"),
+    ]
+}
 
 # (current node, event) -> next node
 TRANSITIONS: dict[tuple[str, str], str] = {
@@ -97,7 +105,8 @@ TRANSITIONS: dict[tuple[str, str], str] = {
     ("onboarding_handoff", "onboarding.handed_off"): "done",
 }
 STAGE_TO_NODE = {
-    ApplicationStage.ASSESSMENT: "assessment", ApplicationStage.INTERVIEW: "interview",
+    ApplicationStage.ASSESSMENT: "assessment",
+    ApplicationStage.INTERVIEW: "interview",
 }
 
 
@@ -111,30 +120,48 @@ class Orchestrator:
 
     # -- persistence --------------------------------------------------------------------
     def get_run(self, app: Application) -> WorkflowRun | None:
-        return self.db.scalar(select(WorkflowRun).where(WorkflowRun.application_id == app.id,
-                                                        WorkflowRun.workflow == "recruitment"))
+        return self.db.scalar(
+            select(WorkflowRun).where(WorkflowRun.application_id == app.id, WorkflowRun.workflow == "recruitment")
+        )
 
     def start(self, app: Application, principal: Principal | None = None) -> WorkflowRun:
         run = self.get_run(app)
         if run:
             return run
-        run = WorkflowRun(organization_id=app.organization_id, application_id=app.id, current_node="intake",
-                          status=WorkflowStatus.RUNNING, state={"job_id": str(app.job_id)}, history=[])
+        run = WorkflowRun(
+            organization_id=app.organization_id,
+            application_id=app.id,
+            current_node="intake",
+            status=WorkflowStatus.RUNNING,
+            state={"job_id": str(app.job_id)},
+            history=[],
+        )
         self.db.add(run)
         self.db.flush()
         self.handle(app, "application.created", principal=principal)
         return run
 
-    def _checkpoint(self, run: WorkflowRun, node: str, event: str, principal: Principal | None,
-                    note: str | None = None) -> None:
+    def _checkpoint(
+        self, run: WorkflowRun, node: str, event: str, principal: Principal | None, note: str | None = None
+    ) -> None:
         spec = NODES[node]
-        run.history = [*run.history, {
-            "from": run.current_node, "to": node, "event": event, "at": utcnow().isoformat(),
-            "actor": str(principal.user_id) if principal else "system", "note": note,
-        }]
+        run.history = [
+            *run.history,
+            {
+                "from": run.current_node,
+                "to": node,
+                "event": event,
+                "at": utcnow().isoformat(),
+                "actor": str(principal.user_id) if principal else "system",
+                "note": note,
+            },
+        ]
         run.current_node = node
         if spec.kind == "terminal":
-            run.status, run.waiting_on = (WorkflowStatus.COMPLETED if node == "done" else WorkflowStatus.CANCELLED), None
+            run.status, run.waiting_on = (
+                (WorkflowStatus.COMPLETED if node == "done" else WorkflowStatus.CANCELLED),
+                None,
+            )
         elif spec.kind in ("human", "external"):
             run.status, run.waiting_on = WorkflowStatus.WAITING_HUMAN, spec.waiting_on
         else:
@@ -142,8 +169,9 @@ class Orchestrator:
         self.db.flush()
 
     # -- event handling ---------------------------------------------------------------------
-    def handle(self, app: Application, event: str, *, principal: Principal | None = None,
-               payload: dict[str, Any] | None = None) -> WorkflowRun | None:
+    def handle(
+        self, app: Application, event: str, *, principal: Principal | None = None, payload: dict[str, Any] | None = None
+    ) -> WorkflowRun | None:
         run = self.get_run(app)
         if run is None:
             if event != "application.created":
@@ -209,7 +237,9 @@ class Orchestrator:
 
 def describe_graph() -> dict[str, Any]:
     return {
-        "nodes": [{"name": n.name, "kind": n.kind, "waiting_on": n.waiting_on, "description": n.description}
-                  for n in NODES.values()],
+        "nodes": [
+            {"name": n.name, "kind": n.kind, "waiting_on": n.waiting_on, "description": n.description}
+            for n in NODES.values()
+        ],
         "edges": [{"from": a, "event": e, "to": b} for (a, e), b in TRANSITIONS.items()],
     }

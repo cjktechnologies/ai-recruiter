@@ -37,7 +37,9 @@ class Assessment(UUIDPk, TenantScoped, Timestamps, Base):
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     questions: Mapped[list[AssessmentQuestion]] = relationship(
-        back_populates="assessment", order_by="AssessmentQuestion.position", lazy="selectin",
+        back_populates="assessment",
+        order_by="AssessmentQuestion.position",
+        lazy="selectin",
         cascade="all, delete-orphan",
     )
 

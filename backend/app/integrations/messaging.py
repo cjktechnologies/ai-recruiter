@@ -81,8 +81,11 @@ class TwilioSmsSender:
         s = get_settings()
         if not (s.twilio_account_sid and s.twilio_auth_token and s.twilio_from_number):
             raise RuntimeError("Twilio credentials are not configured")
-        self.sid, self.token, self.sender = s.twilio_account_sid, s.twilio_auth_token.get_secret_value(), \
-            s.twilio_from_number
+        self.sid, self.token, self.sender = (
+            s.twilio_account_sid,
+            s.twilio_auth_token.get_secret_value(),
+            s.twilio_from_number,
+        )
 
     def send(self, *, to: str, body: str, whatsapp: bool = False) -> SendResult:
         prefix = "whatsapp:" if whatsapp else ""
@@ -90,7 +93,8 @@ class TwilioSmsSender:
             resp = httpx.post(
                 f"https://api.twilio.com/2010-04-01/Accounts/{self.sid}/Messages.json",
                 data={"To": prefix + to, "From": prefix + self.sender, "Body": body[:1600]},
-                auth=(self.sid, self.token), timeout=20,
+                auth=(self.sid, self.token),
+                timeout=20,
             )
             resp.raise_for_status()
         except httpx.HTTPError as exc:

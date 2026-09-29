@@ -23,8 +23,12 @@ AGENT_CATALOG = [
     ("communication", "Candidate Communication Agent", "FAQs, acknowledgements, status updates", CommunicationAgent),
     ("assessment", "Assessment Agent", "Builds and scores structured assessments", AssessmentScoringAgent),
     ("scheduling", "Interview Scheduling Agent", "Coordinates availability and calendar events", SchedulingAgent),
-    ("interview_assistant", "Interview Assistant Agent", "Transcript summaries and competency evidence",
-     InterviewAssistantAgent),
+    (
+        "interview_assistant",
+        "Interview Assistant Agent",
+        "Transcript summaries and competency evidence",
+        InterviewAssistantAgent,
+    ),
     ("evaluation", "Candidate Evaluation Agent", "Consolidates structured evidence", EvaluationAgent),
     ("offer", "Offer Agent", "Drafts offers within approved compensation", OfferAgent),
     ("analytics", "Recruitment Analytics Agent", "Funnel, SLA, source and fairness insights", AnalyticsAgent),
@@ -32,7 +36,19 @@ AGENT_CATALOG = [
 ]
 
 __all__ = [
-    "AGENT_CATALOG", "AnalyticsAgent", "AssessmentBuilderAgent", "AssessmentScoringAgent", "CommunicationAgent",
-    "EvaluationAgent", "InterviewAssistantAgent", "JobDescriptionAgent", "MatchingAgent", "OfferAgent",
-    "OnboardingAgent", "RequisitionAgent", "SchedulingAgent", "ScreeningAgent", "SourcingAgent",
+    "AGENT_CATALOG",
+    "AnalyticsAgent",
+    "AssessmentBuilderAgent",
+    "AssessmentScoringAgent",
+    "CommunicationAgent",
+    "EvaluationAgent",
+    "InterviewAssistantAgent",
+    "JobDescriptionAgent",
+    "MatchingAgent",
+    "OfferAgent",
+    "OnboardingAgent",
+    "RequisitionAgent",
+    "SchedulingAgent",
+    "ScreeningAgent",
+    "SourcingAgent",
 ]

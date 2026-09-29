@@ -17,8 +17,12 @@ from app.core.ratelimit import get_rate_limiter
 
 logger = get_logger("http")
 REQUESTS = Counter("http_requests_total", "HTTP requests", ["method", "route", "status"])
-LATENCY = Histogram("http_request_duration_seconds", "HTTP latency", ["method", "route"],
-                    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10))
+LATENCY = Histogram(
+    "http_request_duration_seconds",
+    "HTTP latency",
+    ["method", "route"],
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
+)
 SENSITIVE_PUBLIC = ("/auth/login", "/auth/refresh", "/public/", "/auth/candidate")
 
 
@@ -35,15 +39,26 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         s = get_settings()
         if any(seg in path for seg in SENSITIVE_PUBLIC):
             ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (
-                request.client.host if request.client else "unknown")
+                request.client.host if request.client else "unknown"
+            )
             try:
-                get_rate_limiter().check(f"ip:{ip}:{path.split('/')[3] if path.count('/') > 3 else path}",
-                                         s.auth_rate_limit_per_minute if "/auth/" in path else s.rate_limit_per_minute)
+                get_rate_limiter().check(
+                    f"ip:{ip}:{path.split('/')[3] if path.count('/') > 3 else path}",
+                    s.auth_rate_limit_per_minute if "/auth/" in path else s.rate_limit_per_minute,
+                )
             except RateLimited as exc:
-                return JSONResponse(status_code=429, headers={"Retry-After": str(exc.extra.get("retry_after", 60)),
-                                                              "X-Request-ID": rid},
-                                    content={"type": "about:blank", "title": exc.title, "status": 429,
-                                             "detail": exc.detail, "code": exc.code, "request_id": rid})
+                return JSONResponse(
+                    status_code=429,
+                    headers={"Retry-After": str(exc.extra.get("retry_after", 60)), "X-Request-ID": rid},
+                    content={
+                        "type": "about:blank",
+                        "title": exc.title,
+                        "status": 429,
+                        "detail": exc.detail,
+                        "code": exc.code,
+                        "request_id": rid,
+                    },
+                )
         response = await call_next(request)
         elapsed = time.perf_counter() - start
         route = request.scope.get("route")
@@ -61,6 +76,12 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         if not path.startswith(("/docs", "/redoc")):
             response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
         if path not in ("/healthz", "/readyz", "/metrics"):
-            log_event(logger, "request", method=request.method, path=route_path, status=response.status_code,
-                      duration_ms=round(elapsed * 1000, 1))
+            log_event(
+                logger,
+                "request",
+                method=request.method,
+                path=route_path,
+                status=response.status_code,
+                duration_ms=round(elapsed * 1000, 1),
+            )
         return response

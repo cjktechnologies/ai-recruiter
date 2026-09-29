@@ -16,15 +16,26 @@ from app.models.recruitment import ApprovalStep, ApprovalWorkflow
 
 
 def start_workflow(
-    db: Session, *, org_id: uuid.UUID, entity_type: str, entity_id: uuid.UUID, roles: list[str],
-    created_by: uuid.UUID | None, assignees: dict[str, uuid.UUID | None] | None = None,
+    db: Session,
+    *,
+    org_id: uuid.UUID,
+    entity_type: str,
+    entity_id: uuid.UUID,
+    roles: list[str],
+    created_by: uuid.UUID | None,
+    assignees: dict[str, uuid.UUID | None] | None = None,
 ) -> ApprovalWorkflow:
-    for old in db.scalars(select(ApprovalWorkflow).where(
-            ApprovalWorkflow.entity_type == entity_type, ApprovalWorkflow.entity_id == entity_id,
-            ApprovalWorkflow.status == ApprovalStatus.PENDING)):
+    for old in db.scalars(
+        select(ApprovalWorkflow).where(
+            ApprovalWorkflow.entity_type == entity_type,
+            ApprovalWorkflow.entity_id == entity_id,
+            ApprovalWorkflow.status == ApprovalStatus.PENDING,
+        )
+    ):
         old.status = ApprovalStatus.SKIPPED
-    wf = ApprovalWorkflow(organization_id=org_id, entity_type=entity_type, entity_id=entity_id,
-                          created_by_id=created_by, current_step=1)
+    wf = ApprovalWorkflow(
+        organization_id=org_id, entity_type=entity_type, entity_id=entity_id, created_by_id=created_by, current_step=1
+    )
     wf.steps = [
         ApprovalStep(step_order=i, approver_role=r, approver_user_id=(assignees or {}).get(r))
         for i, r in enumerate(roles, start=1)
@@ -35,9 +46,15 @@ def start_workflow(
 
 
 def latest_workflow(db: Session, entity_type: str, entity_id: uuid.UUID) -> ApprovalWorkflow | None:
-    return db.scalar(select(ApprovalWorkflow).where(
-        ApprovalWorkflow.entity_type == entity_type, ApprovalWorkflow.entity_id == entity_id,
-    ).order_by(ApprovalWorkflow.created_at.desc()).limit(1))
+    return db.scalar(
+        select(ApprovalWorkflow)
+        .where(
+            ApprovalWorkflow.entity_type == entity_type,
+            ApprovalWorkflow.entity_id == entity_id,
+        )
+        .order_by(ApprovalWorkflow.created_at.desc())
+        .limit(1)
+    )
 
 
 def can_act_on_step(step: ApprovalStep, p: Principal) -> bool:
@@ -52,8 +69,10 @@ def decide(db: Session, wf: ApprovalWorkflow, p: Principal, approve: bool, comme
     step = next(s for s in wf.steps if s.step_order == wf.current_step)
     if not can_act_on_step(step, p):
         raise PermissionDenied(f"This step requires the '{step.approver_role}' role")
-    if any(s.decided_by_id == p.user_id and s.status == ApprovalStatus.APPROVED for s in wf.steps) \
-            and Role.ORG_ADMIN.value not in p.roles:
+    if (
+        any(s.decided_by_id == p.user_id and s.status == ApprovalStatus.APPROVED for s in wf.steps)
+        and Role.ORG_ADMIN.value not in p.roles
+    ):
         raise PermissionDenied("Segregation of duties: the same person cannot approve multiple steps")
     step.status = ApprovalStatus.APPROVED if approve else ApprovalStatus.REJECTED
     step.decided_by_id, step.decided_at, step.comment = p.user_id, utcnow(), comment

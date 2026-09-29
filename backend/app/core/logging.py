@@ -29,9 +29,7 @@ def redact(text: str) -> str:
 
 def redact_obj(value: Any) -> Any:
     if isinstance(value, dict):
-        return {
-            k: ("[REDACTED]" if k.lower() in _SENSITIVE_KEYS else redact_obj(v)) for k, v in value.items()
-        }
+        return {k: ("[REDACTED]" if k.lower() in _SENSITIVE_KEYS else redact_obj(v)) for k, v in value.items()}
     if isinstance(value, list | tuple):
         return [redact_obj(v) for v in value]
     if isinstance(value, str):

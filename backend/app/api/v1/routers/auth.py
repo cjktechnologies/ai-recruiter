@@ -17,8 +17,9 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/login", response_model=TokenOut, summary="Password login (rate limited, lockout after 5 failures)")
 def login(data: LoginIn, request: Request, db: DB) -> dict:
-    tokens = auth_service.login(db, data.email, data.password, ip=client_ip(request),
-                                user_agent=request.headers.get("user-agent"))
+    tokens = auth_service.login(
+        db, data.email, data.password, ip=client_ip(request), user_agent=request.headers.get("user-agent")
+    )
     db.commit()
     return tokens
 
@@ -42,8 +43,15 @@ def me(p: CurrentPrincipal, db: DB) -> MeOut:
     user = db.get(User, p.user_id)
     assert user
     org = db.get(Organization, p.organization_id)
-    return MeOut(id=user.id, email=user.email, full_name=user.full_name, organization_id=org.id if org else None,
-                 organization_name=org.name if org else None, roles=list(p.roles), permissions=sorted(p.permissions))
+    return MeOut(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        organization_id=org.id if org else None,
+        organization_name=org.name if org else None,
+        roles=list(p.roles),
+        permissions=sorted(p.permissions),
+    )
 
 
 @router.post("/candidate/verify", response_model=TokenOut, summary="Exchange a candidate portal magic link token")
@@ -69,4 +77,3 @@ def oidc_callback(code: str, state: str, request: Request, db: DB) -> dict:
     tokens = auth_service.oidc_callback(db, code, request.cookies.get("oidc_nonce", ""))
     db.commit()
     return tokens
-

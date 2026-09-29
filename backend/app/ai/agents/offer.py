@@ -85,19 +85,30 @@ class OfferAgent(BaseAgent[OfferInput, OfferDraft]):
         chain = ["hr_manager"] + (["finance_approver"] if needs_finance else []) + ["hiring_manager"]
         letter = self._letter(p, salary, currency, bonus, benefits)
         ai_letter = False
-        llm = self.ask_llm(state, schema=LLMOfferLetter, user=(
-            f"Company: {p.company}\nCandidate first name: {p.candidate_first_name}\nRole: {p.job_title}\n"
-            f"Base salary: {currency} {salary}\nBonus: {bonus}%\nBenefits: {', '.join(benefits) or 'standard'}\n"
-            f"Start date: {p.start_date or 'to be agreed'}\nOffer valid until: {p.expires_on or 'to be confirmed'}"
-        ))
+        llm = self.ask_llm(
+            state,
+            schema=LLMOfferLetter,
+            user=(
+                f"Company: {p.company}\nCandidate first name: {p.candidate_first_name}\nRole: {p.job_title}\n"
+                f"Base salary: {currency} {salary}\nBonus: {bonus}%\nBenefits: {', '.join(benefits) or 'standard'}\n"
+                f"Start date: {p.start_date or 'to be agreed'}\nOffer valid until: {p.expires_on or 'to be confirmed'}"
+            ),
+        )
         if llm and str(salary) in llm.letter_body.replace(",", ""):
             letter, ai_letter = llm.letter_body, True
         elif llm:
             state.flags.append("llm_letter_rejected:figures_mismatch")
         return OfferDraft(
-            base_salary=salary, currency=currency, bonus_pct=bonus, benefits=benefits, within_band=within,
-            requires_finance_approval=needs_finance, approval_chain=chain, rationale=rationale,
-            letter_body=letter, ai_generated_letter=ai_letter,
+            base_salary=salary,
+            currency=currency,
+            bonus_pct=bonus,
+            benefits=benefits,
+            within_band=within,
+            requires_finance_approval=needs_finance,
+            approval_chain=chain,
+            rationale=rationale,
+            letter_body=letter,
+            ai_generated_letter=ai_letter,
         )
 
     @staticmethod

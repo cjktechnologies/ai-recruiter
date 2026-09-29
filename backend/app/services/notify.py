@@ -17,12 +17,22 @@ from app.models.org import Organization, User
 
 
 def notify_users(
-    db: Session, org_id: uuid.UUID, user_ids: Iterable[uuid.UUID | None], *, kind: str, title: str,
-    body: str | None = None, link: str | None = None, data: dict | None = None,
+    db: Session,
+    org_id: uuid.UUID,
+    user_ids: Iterable[uuid.UUID | None],
+    *,
+    kind: str,
+    title: str,
+    body: str | None = None,
+    link: str | None = None,
+    data: dict | None = None,
 ) -> None:
     for uid in {u for u in user_ids if u}:
-        db.add(Notification(organization_id=org_id, user_id=uid, kind=kind, title=title, body=body, link=link,
-                            data=data or {}))
+        db.add(
+            Notification(
+                organization_id=org_id, user_id=uid, kind=kind, title=title, body=body, link=link, data=data or {}
+            )
+        )
 
 
 def notify_role(db: Session, org_id: uuid.UUID, role_key: str, **kw: object) -> None:
@@ -31,9 +41,17 @@ def notify_role(db: Session, org_id: uuid.UUID, role_key: str, **kw: object) -> 
 
 
 def queue_candidate_message(
-    db: Session, *, candidate: Candidate, template_key: str | None = None, variables: dict | None = None,
-    subject: str | None = None, body: str | None = None, channel: Channel = Channel.EMAIL,
-    application_id: uuid.UUID | None = None, sent_by_id: uuid.UUID | None = None, ai_generated: bool = False,
+    db: Session,
+    *,
+    candidate: Candidate,
+    template_key: str | None = None,
+    variables: dict | None = None,
+    subject: str | None = None,
+    body: str | None = None,
+    channel: Channel = Channel.EMAIL,
+    application_id: uuid.UUID | None = None,
+    sent_by_id: uuid.UUID | None = None,
+    ai_generated: bool = False,
     force: bool = False,
 ) -> Communication | None:
     """Persist an outbound message (status=queued). Delivery happens in a worker after commit."""
@@ -46,9 +64,17 @@ def queue_candidate_message(
     if not body:
         raise ValueError("Message body required")
     comm = Communication(
-        organization_id=candidate.organization_id, candidate_id=candidate.id, application_id=application_id,
-        channel=channel, direction=Direction.OUTBOUND, subject=subject, body=body, template_key=template_key,
-        status=DeliveryStatus.QUEUED, sent_by_id=sent_by_id, ai_generated=ai_generated,
+        organization_id=candidate.organization_id,
+        candidate_id=candidate.id,
+        application_id=application_id,
+        channel=channel,
+        direction=Direction.OUTBOUND,
+        subject=subject,
+        body=body,
+        template_key=template_key,
+        status=DeliveryStatus.QUEUED,
+        sent_by_id=sent_by_id,
+        ai_generated=ai_generated,
     )
     db.add(comm)
     db.flush()

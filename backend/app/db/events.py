@@ -11,7 +11,7 @@ _KEY = "queued_communications"
 
 
 @event.listens_for(Session, "before_flush")
-def _collect(session: Session, flush_context, instances) -> None:  # type: ignore[no-untyped-def]
+def _collect(session: Session, flush_context, instances) -> None:
     for obj in session.new:
         if isinstance(obj, Communication):
             session.info.setdefault(_KEY, []).append(obj)

@@ -56,15 +56,24 @@ class SourcingAgent(BaseAgent[SourcingInput, SourcingOutput]):
     def execute(self, ctx: AgentContext, p: SourcingInput, state: RunState) -> SourcingOutput:
         ranked: list[SourcedCandidate] = []
         for c in p.pool:
-            m = compute_match(MatchInput(
-                requirements=p.requirements, job_embedding=p.job_embedding, candidate_skills=c.skills,
-                candidate_years=c.years, candidate_embedding=c.embedding, candidate_location=c.location,
-            ))
-            ranked.append(SourcedCandidate(
-                candidate_id=c.candidate_id, score=m.score,
-                matched=[x.requirement for x in m.matches if x.matched],
-                missing=[x.requirement for x in m.matches if not x.matched],
-            ))
+            m = compute_match(
+                MatchInput(
+                    requirements=p.requirements,
+                    job_embedding=p.job_embedding,
+                    candidate_skills=c.skills,
+                    candidate_years=c.years,
+                    candidate_embedding=c.embedding,
+                    candidate_location=c.location,
+                )
+            )
+            ranked.append(
+                SourcedCandidate(
+                    candidate_id=c.candidate_id,
+                    score=m.score,
+                    matched=[x.requirement for x in m.matches if x.matched],
+                    missing=[x.requirement for x in m.matches if not x.matched],
+                )
+            )
         ranked.sort(key=lambda r: r.score, reverse=True)
         channels = p.approved_channels or ["careers_site"]
         return SourcingOutput(candidates=ranked[: p.limit], recommended_channels=channels)

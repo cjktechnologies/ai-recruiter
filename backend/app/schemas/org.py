@@ -139,7 +139,7 @@ class CompensationBandIn(BaseModel):
 
     @field_validator("max_salary")
     @classmethod
-    def _range(cls, v: Decimal, info) -> Decimal:  # type: ignore[no-untyped-def]
+    def _range(cls, v: Decimal, info) -> Decimal:
         if "min_salary" in info.data and v < info.data["min_salary"]:
             raise ValueError("max_salary must be >= min_salary")
         return v

@@ -20,14 +20,19 @@ def get_llm_provider() -> LLMProvider:
         from app.ai.providers.anthropic_provider import AnthropicProvider
 
         return AnthropicProvider(
-            api_key=_secret(s.anthropic_api_key), model=s.llm_model, effort=s.llm_effort,
-            timeout=s.llm_timeout_seconds, max_tokens=s.llm_max_output_tokens,
+            api_key=_secret(s.anthropic_api_key),
+            model=s.llm_model,
+            effort=s.llm_effort,
+            timeout=s.llm_timeout_seconds,
+            max_tokens=s.llm_max_output_tokens,
         )
     if s.llm_provider == "openai":
         from app.ai.providers.openai_provider import OpenAIProvider
 
         return OpenAIProvider(
-            api_key=_secret(s.openai_api_key), model=s.llm_model, timeout=s.llm_timeout_seconds,
+            api_key=_secret(s.openai_api_key),
+            model=s.llm_model,
+            timeout=s.llm_timeout_seconds,
             max_tokens=s.llm_max_output_tokens,
         )
     if s.llm_provider == "gemini":

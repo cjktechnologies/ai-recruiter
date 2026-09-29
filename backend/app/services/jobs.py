@@ -42,8 +42,12 @@ def create(db: Session, data: JobIn, p: Principal) -> Job:
         if req.status != RequisitionStatus.APPROVED:
             raise InvalidTransition("Jobs can only be linked to approved requisitions")
     payload = data.model_dump(exclude={"requirements", "screening_config"})
-    job = Job(organization_id=p.organization_id, slug=f"{slugify(data.title)}-{secrets.token_hex(3)}",
-              screening_config=data.screening_config.model_dump(mode="json"), **payload)
+    job = Job(
+        organization_id=p.organization_id,
+        slug=f"{slugify(data.title)}-{secrets.token_hex(3)}",
+        screening_config=data.screening_config.model_dump(mode="json"),
+        **payload,
+    )
     _set_requirements(job, data.requirements)
     refresh_embedding(job)
     db.add(job)
@@ -69,8 +73,14 @@ def set_requirements(db: Session, job: Job, reqs: list[RequirementIn], p: Princi
     _set_requirements(job, reqs)
     refresh_embedding(job)
     db.flush()
-    audit(db, action="job.requirements_set", entity_type="job", entity_id=job.id, principal=p,
-          changes={"requirements": [r.model_dump() for r in reqs]})
+    audit(
+        db,
+        action="job.requirements_set",
+        entity_type="job",
+        entity_id=job.id,
+        principal=p,
+        changes={"requirements": [r.model_dump() for r in reqs]},
+    )
     return job
 
 
@@ -86,8 +96,14 @@ def publish(db: Session, job: Job, p: Principal) -> Job:
     if not job.requirements:
         raise ValidationFailed("Add at least one requirement before publishing")
     job.status, job.published_at = JobStatus.PUBLISHED, job.published_at or utcnow()
-    audit(db, action="job.published", entity_type="job", entity_id=job.id, principal=p,
-          changes={"channels": job.publish_channels})
+    audit(
+        db,
+        action="job.published",
+        entity_type="job",
+        entity_id=job.id,
+        principal=p,
+        changes={"channels": job.publish_channels},
+    )
     return job
 
 
@@ -99,8 +115,14 @@ def close(db: Session, job: Job, p: Principal, *, pause: bool = False) -> Job:
     return job
 
 
-def public_jobs(db: Session, org_id) -> list[Job]:  # type: ignore[no-untyped-def]
+def public_jobs(db: Session, org_id) -> list[Job]:
     now = utcnow()
-    return [j for j in db.scalars(select(Job).where(Job.organization_id == org_id, Job.status == JobStatus.PUBLISHED)
-                                  .order_by(Job.published_at.desc()))
-            if not j.closes_at or j.closes_at > now]
+    return [
+        j
+        for j in db.scalars(
+            select(Job)
+            .where(Job.organization_id == org_id, Job.status == JobStatus.PUBLISHED)
+            .order_by(Job.published_at.desc())
+        )
+        if not j.closes_at or j.closes_at > now
+    ]

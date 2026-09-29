@@ -113,14 +113,18 @@ class ParsedCV:
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 PHONE_RE = re.compile(r"(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{2,4}\)?[\s.-]?)\d{3,4}[\s.-]?\d{3,4}")
 URL_RE = re.compile(r"(https?://[^\s,;]+|(?:www\.)?linkedin\.com/in/[^\s,;]+|github\.com/[^\s,;]+)", re.I)
-MONTHS = {m: i for i, m in enumerate(
-    ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
+MONTHS = {
+    m: i
+    for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)
+}
 DATE_TOKEN = r"(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+)?(?:\d{1,2}/)?(?:19|20)\d{2}"
 RANGE_RE = re.compile(
     rf"(?P<start>{DATE_TOKEN})\s*(?:-|–|—|to|until)\s*(?P<end>{DATE_TOKEN}|present|current|now|today|date)",
     re.I,
 )
-STATED_YEARS_RE = re.compile(r"(\d{1,2})\+?\s*(?:years?|yrs?)(?:\s+of)?\s+(?:professional\s+|industry\s+|relevant\s+)?experience", re.I)
+STATED_YEARS_RE = re.compile(
+    r"(\d{1,2})\+?\s*(?:years?|yrs?)(?:\s+of)?\s+(?:professional\s+|industry\s+|relevant\s+)?experience", re.I
+)
 DEGREE_RE = re.compile(
     r"\b(ph\.?d|doctorate|m\.?sc|m\.?s\.?|master(?:'s)?|mba|m\.?eng|b\.?sc|b\.?s\.?|b\.?a\.?|bachelor(?:'s)?|b\.?eng|"
     r"b\.?tech|diploma|associate(?:'s)? degree|hnd|national diploma)\b(?:\s+(?:of|in)\s+(?P<field>[A-Za-z &]+))?",
@@ -128,7 +132,8 @@ DEGREE_RE = re.compile(
 )
 CERT_RE = re.compile(
     r"\b(AWS Certified [A-Za-z -]+|CKA|CKAD|CISSP|CISM|CEH|PMP|PRINCE2|CPA|ACCA|CFA|CIPD|SHRM-CP|SHRM-SCP|"
-    r"Azure (?:Administrator|Developer|Solutions Architect)[A-Za-z -]*|Google Cloud [A-Za-z -]+|Scrum Master|CSM|ITIL)\b"
+    r"Azure (?:Administrator|Developer|Solutions Architect)[A-Za-z -]*|Google Cloud [A-Za-z -]+|"
+    r"Scrum Master|CSM|ITIL)\b"
 )
 TITLE_HINT = re.compile(
     r"\b(engineer|developer|manager|analyst|designer|scientist|architect|consultant|lead|director|specialist|"
@@ -139,8 +144,11 @@ INSTITUTION_RE = re.compile(
     r"(?:[A-Z][\w&.'-]*\s+){0,4}(?:University|College|Institute|School|Polytechnic|Academy)"
     r"(?:\s+of\s+(?:[A-Z][\w&.'-]*\s?){1,4})?"
 )
-SECTION_HEADERS = re.compile(r"^\s*(experience|work experience|employment|education|skills|projects|certifications|"
-                             r"languages|summary|profile)\s*:?\s*$", re.I)
+SECTION_HEADERS = re.compile(
+    r"^\s*(experience|work experience|employment|education|skills|projects|certifications|"
+    r"languages|summary|profile)\s*:?\s*$",
+    re.I,
+)
 
 
 def _parse_date(token: str, *, today: date) -> date | None:
@@ -201,10 +209,15 @@ def parse_cv(text: str, *, today: date | None = None) -> ParsedCV:
     # Name: first short line with 2-4 capitalised words and no digits/@.
     for ln in non_empty[:6]:
         words = ln.split()
-        if 2 <= len(words) <= 4 and all(w[:1].isupper() for w in words) and not re.search(r"[\d@|:/]", ln):
-            if not SECTION_HEADERS.match(ln) and not TITLE_HINT.search(ln):
-                result.full_name = ln
-                break
+        looks_like_name = 2 <= len(words) <= 4 and all(w[:1].isupper() for w in words)
+        if (
+            looks_like_name
+            and not re.search(r"[\d@|:/]", ln)
+            and not SECTION_HEADERS.match(ln)
+            and not TITLE_HINT.search(ln)
+        ):
+            result.full_name = ln
+            break
     for ln in non_empty[:8]:
         if TITLE_HINT.search(ln) and len(ln) < 120 and ln != result.full_name and "@" not in ln:
             result.headline = ln
@@ -239,7 +252,11 @@ def parse_cv(text: str, *, today: date | None = None) -> ParsedCV:
                 continue
             context = ln
             title_line = None
-            for probe in (ln, non_empty[idx - 1] if idx > 0 else "", non_empty[idx + 1] if idx + 1 < len(non_empty) else ""):
+            for probe in (
+                ln,
+                non_empty[idx - 1] if idx > 0 else "",
+                non_empty[idx + 1] if idx + 1 < len(non_empty) else "",
+            ):
                 if probe and TITLE_HINT.search(probe):
                     title_line = probe
                     break

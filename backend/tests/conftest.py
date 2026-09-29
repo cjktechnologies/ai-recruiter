@@ -9,26 +9,28 @@ import uuid
 from collections.abc import Iterator
 
 TEST_DB = os.environ.get("TEST_DATABASE_URL", "postgresql+psycopg://recruiter:recruiter@localhost:5432/recruiter_test")
-os.environ.update({
-    "ENVIRONMENT": "test",
-    "DATABASE_URL": TEST_DB,
-    "TASK_ALWAYS_EAGER": "true",
-    "LLM_PROVIDER": "local",
-    "EMBEDDING_PROVIDER": "local",
-    "STORAGE_BACKEND": "local",
-    "STORAGE_LOCAL_PATH": tempfile.mkdtemp(prefix="recruiter-test-"),
-    "LOG_JSON": "true",
-    "RATE_LIMIT_PER_MINUTE": "100000",
-    "AUTH_RATE_LIMIT_PER_MINUTE": "100000",
-    "PUBLIC_BASE_URL": "https://careers.test",
-})
+os.environ.update(
+    {
+        "ENVIRONMENT": "test",
+        "DATABASE_URL": TEST_DB,
+        "TASK_ALWAYS_EAGER": "true",
+        "LLM_PROVIDER": "local",
+        "EMBEDDING_PROVIDER": "local",
+        "STORAGE_BACKEND": "local",
+        "STORAGE_LOCAL_PATH": tempfile.mkdtemp(prefix="recruiter-test-"),
+        "LOG_JSON": "true",
+        "RATE_LIMIT_PER_MINUTE": "100000",
+        "AUTH_RATE_LIMIT_PER_MINUTE": "100000",
+        "PUBLIC_BASE_URL": "https://careers.test",
+    }
+)
 
 import pytest  # noqa: E402
-from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
+from alembic import command  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 from app.db.session import get_engine, get_sessionmaker  # noqa: E402
 
@@ -52,8 +54,12 @@ def _migrate() -> None:
 def _truncate() -> None:
     engine = get_engine()
     with engine.begin() as conn:
-        tables = [r[0] for r in conn.execute(text(
-            "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> 'alembic_version'"))]
+        tables = [
+            r[0]
+            for r in conn.execute(
+                text("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> 'alembic_version'")
+            )
+        ]
         conn.execute(text("SET LOCAL app.audit_maintenance = 'on'"))
         conn.execute(text(f"TRUNCATE {', '.join(tables)} RESTART IDENTITY CASCADE"))
 
@@ -67,8 +73,10 @@ def _database() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _clean(request: pytest.FixtureRequest) -> Iterator[None]:
+    from app.core.ratelimit import get_rate_limiter
     from app.integrations.messaging import ConsoleEmailSender, ConsoleSmsSender
 
+    get_rate_limiter.cache_clear()
     ConsoleEmailSender.outbox.clear()
     ConsoleSmsSender.outbox.clear()
     _truncate()

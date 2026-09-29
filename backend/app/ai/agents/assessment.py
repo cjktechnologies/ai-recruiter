@@ -78,15 +78,20 @@ class AssessmentBuilderAgent(BaseAgent[BuildInput, BuildOutput]):
         coverage: dict[str, int] = {}
         per_skill = max(1, p.max_questions // max(1, len(wanted)))
         for skill in wanted:
-            pool = [q for q in p.bank if q.id not in chosen and (
-                (q.competency or "").lower() == skill or skill in [t.lower() for t in q.tags])]
+            pool = [
+                q
+                for q in p.bank
+                if q.id not in chosen
+                and ((q.competency or "").lower() == skill or skill in [t.lower() for t in q.tags])
+            ]
             pool.sort(key=lambda q: {"easy": 0, "medium": 1, "hard": 2}.get(q.difficulty, 1))
             for q in pool[:per_skill]:
                 if len(chosen) < p.max_questions:
                     chosen.append(q.id)
                     coverage[skill] = coverage.get(skill, 0) + 1
-        return BuildOutput(question_ids=chosen, coverage=coverage,
-                           uncovered_skills=[s for s in wanted if s not in coverage])
+        return BuildOutput(
+            question_ids=chosen, coverage=coverage, uncovered_skills=[s for s in wanted if s not in coverage]
+        )
 
 
 def _norm(v: object) -> str:
@@ -103,21 +108,36 @@ def score_answers(p: ScoreInput) -> ScoreOutput:
             qs = QuestionScore(score=0, max=q.points, auto=True, needs_review=False, note="No answer")
         elif q.kind == "single_choice" and "value" in key:
             ok = _norm(ans) == _norm(key["value"])
-            qs = QuestionScore(score=q.points if ok else 0, max=q.points, auto=True, needs_review=False,
-                               note="Correct" if ok else "Incorrect")
+            qs = QuestionScore(
+                score=q.points if ok else 0,
+                max=q.points,
+                auto=True,
+                needs_review=False,
+                note="Correct" if ok else "Incorrect",
+            )
         elif q.kind == "multi_choice" and "values" in key:
             given = {_norm(a) for a in (ans if isinstance(ans, list) else [ans])}
             correct = {_norm(a) for a in key["values"]}
             tp = len(given & correct)
             fp = len(given - correct)
             frac = max(0.0, (tp - fp) / len(correct)) if correct else 0.0
-            qs = QuestionScore(score=round(q.points * frac, 2), max=q.points, auto=True, needs_review=False,
-                               note=f"{tp}/{len(correct)} correct, {fp} incorrect")
+            qs = QuestionScore(
+                score=round(q.points * frac, 2),
+                max=q.points,
+                auto=True,
+                needs_review=False,
+                note=f"{tp}/{len(correct)} correct, {fp} incorrect",
+            )
         elif q.kind == "rating":
             try:
                 val = float(ans)  # type: ignore[arg-type]
-                qs = QuestionScore(score=round(q.points * max(0, min(val, 5)) / 5, 2), max=q.points, auto=True,
-                                   needs_review=False, note="Self-rating")
+                qs = QuestionScore(
+                    score=round(q.points * max(0, min(val, 5)) / 5, 2),
+                    max=q.points,
+                    auto=True,
+                    needs_review=False,
+                    note="Self-rating",
+                )
             except (TypeError, ValueError):
                 qs = QuestionScore(score=0, max=q.points, auto=True, needs_review=False, note="Invalid rating")
         else:
@@ -140,8 +160,11 @@ def score_answers(p: ScoreInput) -> ScoreOutput:
     pct = round(100 * total / max_total, 1)
     needs_review = any(v.needs_review for v in per.values())
     return ScoreOutput(
-        score=round(total, 2), max_score=round(max_total, 2), percentage=pct,
-        passed=None if needs_review else pct >= p.passing_pct, needs_human_review=needs_review,
+        score=round(total, 2),
+        max_score=round(max_total, 2),
+        percentage=pct,
+        passed=None if needs_review else pct >= p.passing_pct,
+        needs_human_review=needs_review,
         per_question=per,
         competency_scores={c: round(100 * s / m, 1) if m else 0 for c, (s, m) in comp_tot.items()},
     )

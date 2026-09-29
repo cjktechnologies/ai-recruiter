@@ -38,8 +38,13 @@ def get_principal(
 ) -> Principal:
     if creds is None or creds.scheme.lower() != "bearer":
         raise AuthenticationError()
-    p = principal_from_token(db, creds.credentials, org_override=x_organization_id, ip=client_ip(request),
-                             user_agent=request.headers.get("user-agent"))
+    p = principal_from_token(
+        db,
+        creds.credentials,
+        org_override=x_organization_id,
+        ip=client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
     org_id_ctx.set(str(p.organization_id))
     user_id_ctx.set(str(p.user_id))
     get_rate_limiter().check(f"user:{p.user_id}", get_settings().rate_limit_per_minute)
@@ -85,8 +90,12 @@ class PageParams:
 
 
 Paging = Annotated[PageParams, Depends()]
+
+
 def _idempotency_key(
-    key: Annotated[str | None, Header(alias="Idempotency-Key", description="Client-generated key (8-200 chars)")] = None,
+    key: Annotated[
+        str | None, Header(alias="Idempotency-Key", description="Client-generated key (8-200 chars)")
+    ] = None,
 ) -> str | None:
     return key
 
@@ -94,15 +103,24 @@ def _idempotency_key(
 IdempotencyKeyHeader = Annotated[str | None, Depends(_idempotency_key)]
 
 
-def run_idempotent(db: Session, p: Principal | None, request: Request, key: str | None, body: Any,
-                   fn: Callable[[], T], status_code: int = 200) -> T | Any:
+def run_idempotent(
+    db: Session,
+    p: Principal | None,
+    request: Request,
+    key: str | None,
+    body: Any,
+    fn: Callable[[], T],
+    status_code: int = 200,
+) -> T | Any:
     """Execute fn once per Idempotency-Key; retries get the stored response."""
     if not key:
         result = fn()
         db.commit()
         return result
-    scope = f"{p.organization_id if p else 'public'}:{p.user_id if p else client_ip(request)}:" \
-            f"{request.method}:{request.url.path}"[:120]
+    scope = (
+        f"{p.organization_id if p else 'public'}:{p.user_id if p else client_ip(request)}:"
+        f"{request.method}:{request.url.path}"[:120]
+    )
     fp = idempotency.request_fingerprint(body)
     existing = idempotency.lookup(db, scope, key, fp)
     if existing is not None:

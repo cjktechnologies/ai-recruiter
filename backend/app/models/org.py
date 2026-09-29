@@ -44,9 +44,7 @@ class Department(UUIDPk, TenantScoped, Timestamps, Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     code: Mapped[str | None] = mapped_column(String(40))
     parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"))
-    head_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL", use_alter=True)
-    )
+    head_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL", use_alter=True))
     cost_center: Mapped[str | None] = mapped_column(String(60))
 
 
