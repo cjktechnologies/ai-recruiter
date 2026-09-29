@@ -1,0 +1,68 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"   # weekly, catches newly disclosed CVEs
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  dependencies:
+    name: Dependency vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: pip-audit (Python)
+        run: pip install pip-audit && pip-audit -r backend/requirements.txt --strict
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: npm audit (Node)
+        working-directory: frontend
+        run: npm ci --ignore-scripts && npm audit --omit=dev --audit-level=high
+
+  secrets:
+    name: Secret scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+
+  sast:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: { language: [python, javascript-typescript] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with: { languages: "${{ matrix.language }}", queries: security-extended }
+      - uses: github/codeql-action/analyze@v3
+
+  containers:
+    name: Container image scan
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: { component: [backend, frontend] }
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t scan/${{ matrix.component }}:ci ${{ matrix.component }}
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: scan/${{ matrix.component }}:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: sarif
+          output: trivy-${{ matrix.component }}.sarif
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: "trivy-${{ matrix.component }}.sarif", category: "trivy-${{ matrix.component }}" }

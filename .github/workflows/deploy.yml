@@ -1,0 +1,56 @@
+name: Deploy (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment: { type: string, required: true }
+      image_tag: { type: string, required: true }
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}   # production requires reviewer approval (environment protection rule)
+      url: ${{ vars.PUBLIC_URL }}
+    env:
+      AWS_REGION: eu-west-1
+      RELEASE: ai-recruiter
+      NAMESPACE: ai-recruiter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: "${{ vars.AWS_DEPLOY_ROLE_ARN }}", aws-region: "${{ env.AWS_REGION }}" }
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - uses: azure/setup-helm@v4
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --name "ai-recruiter-${{ inputs.environment }}" --region "$AWS_REGION"
+      - name: Pre-deploy database snapshot (production)
+        if: inputs.environment == 'production'
+        run: |
+          aws rds create-db-snapshot --db-instance-identifier ai-recruiter-production \
+            --db-snapshot-identifier "pre-deploy-${{ inputs.image_tag }}-${{ github.run_attempt }}"
+      - name: Helm upgrade (migrations run as a pre-upgrade hook; --atomic rolls back on failure)
+        run: |
+          helm upgrade --install "$RELEASE" deploy/helm/ai-recruiter \
+            --namespace "$NAMESPACE" --create-namespace \
+            -f deploy/helm/ai-recruiter/values-${{ inputs.environment }}.yaml \
+            --set image.api.repository=${{ steps.ecr.outputs.registry }}/ai-recruiter-api \
+            --set image.web.repository=${{ steps.ecr.outputs.registry }}/ai-recruiter-web \
+            --set image.api.tag=${{ inputs.image_tag }} --set image.web.tag=${{ inputs.image_tag }} \
+            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=${{ vars.APP_ROLE_ARN }} \
+            --set ingress.tlsCertificateArn=${{ vars.TLS_CERT_ARN }} \
+            --atomic --timeout 15m --history-max 20 --wait
+      - name: Smoke tests
+        run: |
+          set -e
+          curl -fsS "${{ vars.PUBLIC_URL }}/login" > /dev/null
+          kubectl -n "$NAMESPACE" run smoke-${{ github.run_id }} --rm -i --restart=Never --image=curlimages/curl -- \
+            curl -fsS http://$RELEASE-api:8000/readyz
+      - name: Roll back on smoke-test failure
+        if: failure()
+        run: helm rollback "$RELEASE" 0 --namespace "$NAMESPACE" --wait --timeout 10m

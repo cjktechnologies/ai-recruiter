@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (lint, types, tests, migrations)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: recruiter, POSTGRES_PASSWORD: recruiter, POSTGRES_DB: recruiter_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U recruiter" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    defaults: { run: { working-directory: backend } }
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://recruiter:recruiter@localhost:5432/recruiter_test
+      DATABASE_URL: postgresql+psycopg://recruiter:recruiter@localhost:5432/recruiter_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip, cache-dependency-path: backend/requirements-dev.txt }
+      - run: pip install -r requirements-dev.txt
+      - name: Lint & format
+        run: ruff check . && ruff format --check .
+      - name: Type check
+        run: mypy app
+      - name: Migrations apply, roll back and match the models
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+          alembic check
+      - name: Tests (unit, integration, security, AI evaluation)
+        run: pytest --cov=app --cov-report=xml --cov-fail-under=80 --junitxml=junit.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: backend-test-results, path: "backend/junit.xml\nbackend/coverage.xml" }
+      - name: Export OpenAPI spec and fail if docs/api/openapi.json is stale
+        run: |
+          python -m scripts.export_openapi /tmp/openapi.json
+          diff -q /tmp/openapi.json ../docs/api/openapi.json || (echo "Run: python -m scripts.export_openapi ../docs/api/openapi.json" && exit 1)
+
+  frontend:
+    name: Frontend (lint, types, build)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+
+  e2e:
+    name: End-to-end (Playwright against the full stack)
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: recruiter, POSTGRES_PASSWORD: recruiter, POSTGRES_DB: recruiter }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U recruiter" --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      DATABASE_URL: postgresql+psycopg://recruiter:recruiter@localhost:5432/recruiter
+      TASK_ALWAYS_EAGER: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip, cache-dependency-path: backend/requirements.txt }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - name: Start API with seeded demo tenant
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt
+          alembic upgrade head
+          python -m scripts.seed --slug demo --password 'Demo!Passw0rd123'
+          nohup uvicorn app.main:app --port 8000 > api.log 2>&1 &
+      - name: Build & start web
+        working-directory: frontend
+        run: |
+          npm ci && npx playwright install --with-deps chromium
+          npm run build
+          BACKEND_URL=http://localhost:8000 nohup npm start > web.log 2>&1 &
+          npx -y wait-on -t 60000 http://localhost:3000/login
+      - run: npx playwright test
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-report, path: "frontend/test-results\nbackend/api.log\nfrontend/web.log" }
+
+  infrastructure:
+    name: IaC & manifests (Terraform, Helm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform fmt & validate
+        run: |
+          terraform -chdir=infra/terraform fmt -check -recursive
+          for d in infra/terraform/environments/staging infra/terraform/environments/production infra/terraform/bootstrap; do
+            terraform -chdir=$d init -backend=false -input=false && terraform -chdir=$d validate
+          done
+      - uses: azure/setup-helm@v4
+      - name: Helm lint & render; validate against Kubernetes schemas
+        run: |
+          helm lint deploy/helm/ai-recruiter -f deploy/helm/ai-recruiter/values-production.yaml
+          helm template ar deploy/helm/ai-recruiter -f deploy/helm/ai-recruiter/values-staging.yaml > /tmp/rendered.yaml
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          ./kubeconform -strict -ignore-missing-schemas -summary /tmp/rendered.yaml
+      - name: IaC security scan (Checkov)
+        uses: bridgecrewio/checkov-action@v12
+        with: { directory: infra/terraform, framework: terraform, soft_fail: true, output_format: sarif, output_file_path: checkov.sarif }
