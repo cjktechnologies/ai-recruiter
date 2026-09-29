@@ -14,8 +14,14 @@ request_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar("req
 org_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar("org_id", default=None)
 user_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar("user_id", default=None)
 
-_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-_PHONE_RE = re.compile(r"(?<!\d)(?:\+?\d[\d\s().-]{8,}\d)(?!\d)")
+# Linear-time patterns: the look-behind stops the engine restarting inside a run of local-part characters and
+# every quantifier is bounded (RFC 5321 limits), so untrusted input cannot trigger polynomial backtracking.
+EMAIL_PATTERN = (
+    r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,256}"
+    r"@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}"
+)
+_EMAIL_RE = re.compile(EMAIL_PATTERN)
+_PHONE_RE = re.compile(r"(?<![\d+])(?:\+?\d[\d\s().-]{8,20}\d)(?!\d)")
 _SECRET_RE = re.compile(r"(?i)(bearer\s+[A-Za-z0-9._-]+|sk-[A-Za-z0-9_-]{8,}|api[_-]?key\s*[=:]\s*\S+)")
 _SENSITIVE_KEYS = {"password", "token", "access_token", "refresh_token", "secret", "authorization", "api_key"}
 
@@ -49,6 +55,8 @@ class JsonFormatter(logging.Formatter):
             "user_id": user_id_ctx.get(),
         }
         extra = getattr(record, "extra_fields", None)
+        if isinstance(extra, str):
+            extra = json.loads(extra)
         if isinstance(extra, dict):
             payload.update(redact_obj(extra))
         if record.exc_info:
@@ -58,8 +66,8 @@ class JsonFormatter(logging.Formatter):
 
 class TextFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
-        record.msg = redact(str(record.msg))
-        return super().format(record)
+        record.msg = _one_line(redact(str(record.msg)))
+        return _one_line(super().format(record)) if not record.exc_info else super().format(record)
 
 
 def configure_logging(level: str = "INFO", json_output: bool = True) -> None:
@@ -78,5 +86,13 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
+def _one_line(text: str) -> str:
+    """Neutralise CR/LF so user-influenced values can never forge additional log lines."""
+    return text.replace("\r", "\\r").replace("\n", "\\n")
+
+
 def log_event(logger: logging.Logger, msg: str, level: int = logging.INFO, **fields: Any) -> None:
-    logger.log(level, msg, extra={"extra_fields": fields})
+    # Structured fields travel as one JSON string: json.dumps escapes control characters, and the explicit
+    # line-break neutralisation keeps that guarantee visible to static analysis. JsonFormatter decodes it.
+    encoded = _one_line(json.dumps(redact_obj(fields), default=str))
+    logger.log(level, _one_line(msg), extra={"extra_fields": encoded})

@@ -14,7 +14,11 @@ RUN npm run build
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
-RUN apk upgrade --no-cache && addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
+# The standalone server only needs `node`: remove npm/corepack/yarn (and their bundled dependencies,
+# which carry the base image's only HIGH findings) from the runtime image.
+RUN apk upgrade --no-cache && addgroup -S -g 10001 app && adduser -S -u 10001 -G app app \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-* \
+       /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg
 COPY --from=build --chown=app:app /app/.next/standalone ./
 COPY --from=build --chown=app:app /app/.next/static ./.next/static
 COPY --from=build --chown=app:app /app/public ./public

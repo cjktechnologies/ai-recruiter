@@ -51,14 +51,17 @@ jobs:
     name: Container image scan
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false   # report both images even when one fails
       matrix: { component: [backend, frontend] }
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t scan/${{ matrix.component }}:ci ${{ matrix.component }}
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: scan/${{ matrix.component }}:ci
           severity: CRITICAL,HIGH
+          # Without this, SARIF mode ignores `severity` and exit-code fails on LOW/MEDIUM too.
+          limit-severities-for-sarif: true
           ignore-unfixed: true
           exit-code: "1"
           format: sarif

@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date
 
 from app.ai.taxonomy import LANGUAGES, matchers
+from app.core.logging import EMAIL_PATTERN
 
 SUPPORTED_TYPES = {
     "application/pdf": "pdf",
@@ -110,7 +111,7 @@ class ParsedCV:
         return asdict(self)
 
 
-EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+EMAIL_RE = re.compile(EMAIL_PATTERN)
 PHONE_RE = re.compile(r"(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{2,4}\)?[\s.-]?)\d{3,4}[\s.-]?\d{3,4}")
 URL_RE = re.compile(r"(https?://[^\s,;]+|(?:www\.)?linkedin\.com/in/[^\s,;]+|github\.com/[^\s,;]+)", re.I)
 MONTHS = {
