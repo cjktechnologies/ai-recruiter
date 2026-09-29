@@ -1,0 +1,99 @@
+{{- $root := . -}}
+{{- range $name, $spec := dict "api" .Values.api "worker" .Values.worker "beat" (dict "replicas" 1 "resources" .Values.worker.resources "autoscaling" (dict "enabled" false)) "web" .Values.web }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ar.name" $root }}-{{ $name }}
+  labels: {{- include "ar.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  replicas: {{ $spec.replicas }}
+  {{- if eq $name "beat" }}
+  strategy: { type: Recreate }   # exactly one scheduler
+  {{- else }}
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 25% } }
+  {{- end }}
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels: { app.kubernetes.io/instance: {{ $root.Release.Name }}, app.kubernetes.io/component: {{ $name }} }
+  template:
+    metadata:
+      labels: {{- include "ar.labels" $root | nindent 8 }}
+        app.kubernetes.io/component: {{ $name }}
+      annotations:
+        checksum/config: {{ toJson $root.Values.config | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "ar.name" $root }}
+      {{- include "ar.podSecurity" $root | nindent 6 }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app.kubernetes.io/component: {{ $name }} } }
+      containers:
+        - name: {{ $name }}
+          {{- if eq $name "web" }}
+          image: {{ $root.Values.image.web.repository }}:{{ $root.Values.image.web.tag }}
+          env:
+            - { name: BACKEND_URL, value: "http://{{ include "ar.name" $root }}-api:8000" }
+          ports: [{ containerPort: 3000, name: http }]
+          readinessProbe: { httpGet: { path: /login, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /login, port: http }, periodSeconds: 20, failureThreshold: 3 }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }, { name: cache, mountPath: /app/.next/cache }]
+          {{- else }}
+          image: {{ include "ar.apiImage" $root }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          {{- if eq $name "worker" }}
+          command: ["celery", "-A", "app.workers.celery_app:celery", "worker", "-Q", "celery,ai", "--loglevel=INFO", "--concurrency={{ $root.Values.worker.concurrency }}"]
+          livenessProbe:
+            exec: { command: ["sh", "-c", "celery -A app.workers.celery_app:celery inspect ping -d celery@$HOSTNAME --timeout 10"] }
+            periodSeconds: 60
+            timeoutSeconds: 20
+          {{- else if eq $name "beat" }}
+          command: ["celery", "-A", "app.workers.celery_app:celery", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
+          {{- else }}
+          ports: [{ containerPort: 8000, name: http }]
+          readinessProbe: { httpGet: { path: /readyz, port: http }, periodSeconds: 10, timeoutSeconds: 3 }
+          livenessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 20, failureThreshold: 3 }
+          startupProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 5, failureThreshold: 24 }
+          {{- end }}
+          env:
+            {{- include "ar.env" $root | nindent 12 }}
+            {{- if eq $name "api" }}
+            - { name: WEB_CONCURRENCY, value: {{ $root.Values.api.webConcurrency | quote }} }
+            {{- end }}
+          envFrom: {{- include "ar.envFrom" $root | nindent 12 }}
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          {{- end }}
+          resources: {{- toYaml $spec.resources | nindent 12 }}
+          {{- include "ar.containerSecurity" $root | nindent 10 }}
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        {{- if eq $name "web" }}
+        - { name: cache, emptyDir: {} }
+        {{- end }}
+{{- if $spec.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "ar.name" $root }}-{{ $name }}
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: {{ include "ar.name" $root }}-{{ $name }} }
+  minReplicas: {{ $spec.autoscaling.min }}
+  maxReplicas: {{ $spec.autoscaling.max }}
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: {{ $spec.autoscaling.cpu }} } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ar.name" $root }}-{{ $name }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app.kubernetes.io/instance: {{ $root.Release.Name }}, app.kubernetes.io/component: {{ $name }} }
+{{- end }}
+{{- end }}

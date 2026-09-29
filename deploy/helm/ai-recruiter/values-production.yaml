@@ -1,0 +1,4 @@
+environment: production
+host: recruit.example.com
+publicBaseUrl: https://recruit.example.com
+externalSecret: { enabled: true, secretStore: aws-secrets-manager, remoteKey: ai-recruiter/production, refreshInterval: 1h }

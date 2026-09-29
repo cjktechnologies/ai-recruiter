@@ -1,0 +1,7 @@
+environment: staging
+host: recruit.staging.example.com
+publicBaseUrl: https://recruit.staging.example.com
+externalSecret: { enabled: true, secretStore: aws-secrets-manager, remoteKey: ai-recruiter/staging, refreshInterval: 1h }
+api: { replicas: 2, autoscaling: { enabled: true, min: 2, max: 4, cpu: 70 } }
+worker: { replicas: 1, autoscaling: { enabled: false } }
+web: { replicas: 1, autoscaling: { enabled: false } }

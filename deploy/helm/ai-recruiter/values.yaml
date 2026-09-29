@@ -1,0 +1,70 @@
+# Default values. Environment overrides live in values-staging.yaml / values-production.yaml.
+image:
+  api: { repository: REPLACE_ME/ai-recruiter-api, tag: "latest" }
+  web: { repository: REPLACE_ME/ai-recruiter-web, tag: "latest" }
+  pullPolicy: IfNotPresent
+
+environment: production
+host: recruit.example.com
+publicBaseUrl: https://recruit.example.com
+
+# Non-secret configuration (12-factor env vars).
+config:
+  LOG_LEVEL: INFO
+  LLM_PROVIDER: anthropic
+  LLM_MODEL: claude-opus-5-5
+  LLM_EFFORT: medium
+  EMBEDDING_PROVIDER: local
+  STORAGE_BACKEND: s3
+  S3_REGION: eu-west-1
+  EMAIL_BACKEND: smtp
+  SMS_BACKEND: console
+  REQUIRE_MALWARE_SCAN: "true"
+  CLAMAV_HOST: clamav
+  RATE_LIMIT_PER_MINUTE: "300"
+  AUTH_RATE_LIMIT_PER_MINUTE: "20"
+
+# Secrets are synced from AWS Secrets Manager by External Secrets Operator into this Secret.
+# Keys: DATABASE_URL, REDIS_URL, JWT_SECRET, DATA_ENCRYPTION_KEY, ANTHROPIC_API_KEY, S3_BUCKET,
+#       S3_KMS_KEY_ID, SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, OIDC_* ...
+externalSecret:
+  enabled: true
+  secretStore: aws-secrets-manager
+  remoteKey: ai-recruiter/production
+  refreshInterval: 1h
+existingSecretName: ai-recruiter-secrets
+
+serviceAccount:
+  annotations: {}   # eks.amazonaws.com/role-arn: arn:aws:iam::<acct>:role/ai-recruiter (IRSA for S3/KMS)
+
+api:
+  replicas: 3
+  resources: { requests: { cpu: 250m, memory: 512Mi }, limits: { cpu: "1", memory: 1Gi } }
+  autoscaling: { enabled: true, min: 3, max: 12, cpu: 65 }
+  webConcurrency: 2
+worker:
+  replicas: 2
+  resources: { requests: { cpu: 250m, memory: 512Mi }, limits: { cpu: "1", memory: 1536Mi } }
+  autoscaling: { enabled: true, min: 2, max: 10, cpu: 70 }
+  concurrency: 4
+web:
+  replicas: 2
+  resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: 500m, memory: 512Mi } }
+  autoscaling: { enabled: true, min: 2, max: 8, cpu: 70 }
+clamav:
+  enabled: true
+  resources: { requests: { cpu: 100m, memory: 1536Mi }, limits: { memory: 2560Mi } }
+
+ingress:
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/healthcheck-path: /login
+  tlsCertificateArn: ""
+
+monitoring:
+  serviceMonitor: true
+  prometheusRules: true
