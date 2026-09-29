@@ -55,6 +55,8 @@ class JsonFormatter(logging.Formatter):
             "user_id": user_id_ctx.get(),
         }
         extra = getattr(record, "extra_fields", None)
+        if isinstance(extra, str):
+            extra = json.loads(extra)
         if isinstance(extra, dict):
             payload.update(redact_obj(extra))
         if record.exc_info:
@@ -89,15 +91,8 @@ def _one_line(text: str) -> str:
     return text.replace("\r", "\\r").replace("\n", "\\n")
 
 
-def _one_line_obj(value: Any) -> Any:
-    if isinstance(value, str):
-        return _one_line(value)
-    if isinstance(value, dict):
-        return {k: _one_line_obj(v) for k, v in value.items()}
-    if isinstance(value, list | tuple):
-        return [_one_line_obj(v) for v in value]
-    return value
-
-
 def log_event(logger: logging.Logger, msg: str, level: int = logging.INFO, **fields: Any) -> None:
-    logger.log(level, _one_line(msg), extra={"extra_fields": _one_line_obj(fields)})
+    # Structured fields travel as one JSON string: json.dumps escapes control characters, and the explicit
+    # line-break neutralisation keeps that guarantee visible to static analysis. JsonFormatter decodes it.
+    encoded = _one_line(json.dumps(redact_obj(fields), default=str))
+    logger.log(level, _one_line(msg), extra={"extra_fields": encoded})
