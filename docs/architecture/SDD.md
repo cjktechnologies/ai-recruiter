@@ -15,7 +15,7 @@ flowchart LR
     Beat[Celery beat]
     PG[(PostgreSQL)]
     Redis[(Redis)]
-    S3[(Object storage)]
+    GCS[(Cloud Storage)]
     AV[ClamAV]
   end
   LLM[LLM providers: Anthropic / OpenAI / Gemini]
@@ -28,8 +28,8 @@ flowchart LR
   Staff --> Web
   Cand --> Web
   Web -->|httpOnly session, bearer| API
-  API --> PG & Redis & S3 & AV
-  Worker --> PG & Redis & S3 & AV
+  API --> PG & Redis & GCS & AV
+  Worker --> PG & Redis & GCS & AV
   Beat --> Redis
   API --> LLM & Cal
   Worker --> Msg & HRIS
@@ -50,7 +50,7 @@ backend/app
 ├── domain/         Pure domain: enums, permission catalogue, pipeline state machine and human gates
 ├── ai/             Agents, orchestrator, guardrails, CV parser, taxonomy, embeddings, prompts, providers
 ├── integrations/   Driven adapters: calendars, messaging, HRIS/webhooks
-├── storage/        Object storage port (local, S3)
+├── storage/        Object storage port (local, Google Cloud Storage)
 ├── models/         SQLAlchemy ORM (persistence adapter)
 ├── workers/        Celery app, tasks, dispatcher
 └── core/           Config, security, logging, errors, rate limiting, idempotency
@@ -118,7 +118,7 @@ added later, LangGraph can run *inside* an auto node without changing this desig
   VARCHAR + CHECK for painless migrations.
 - **Indexes:** tenant + status/stage composites, time-series (`applied_at`, `created_at`), GIN on tags, a trigram
   index for fuzzy candidate search, entity indexes for audit and AI logs.
-- **Encryption:** storage-level (KMS on RDS/S3/ElastiCache) plus application-level Fernet encryption for high-risk PII:
+- **Encryption:** storage-level (Cloud KMS keys on Cloud SQL, Cloud Storage and Memorystore) plus application-level Fernet encryption for high-risk PII:
   phone numbers, raw CV text, interview transcripts, integration credentials.
 - **Audit:** `audit_logs` is append-only, enforced by a trigger that rejects UPDATE and DELETE.
 - **Embeddings:** stored as `real[]`. Matching uses explainable requirement coverage (75%) plus cosine similarity
@@ -153,9 +153,9 @@ inline execution.
 |---|---|---|
 | API | FastAPI + Pydantic v2 | Typed contracts, generated OpenAPI, performance |
 | ORM/migrations | SQLAlchemy 2 + Alembic | Mature, typed; migrations verified for round-trip and drift in CI |
-| DB | PostgreSQL 16 | Transactions across the workflow, JSONB, GIN/trigram, RDS PITR |
+| DB | PostgreSQL 16 | Transactions across the workflow, JSONB, GIN/trigram, Cloud SQL PITR |
 | Jobs | Celery + Redis | Scheduling, retries, routing; Redis also serves rate limiting |
 | AI | Provider port + official SDKs (anthropic, openai, google-genai) | Vendor neutrality, structured outputs, graceful fallback |
 | Auth | JWT (15 min) + rotating refresh tokens + OIDC | Stateless API; reuse detection; enterprise SSO |
 | Frontend | Next.js + Tailwind | SSR/BFF, security headers, fast iteration |
-| Infra | EKS, RDS, ElastiCache, S3, KMS, WAF via Terraform; Helm | Managed, encrypted, multi-AZ; declarative and reviewable |
+| Infra | GKE, Cloud SQL, Memorystore, Cloud Storage, Cloud KMS, Cloud Armor via Terraform; Helm | Managed, encrypted, multi-zone; declarative and reviewable |

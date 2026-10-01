@@ -1,7 +1,14 @@
 environment: staging
+ingress:
+  gke:
+    enabled: true
+    staticIpName: ai-recruiter-staging-ingress
+    managedCertificate: true
+    sslPolicy: ai-recruiter-staging-tls
+    securityPolicy: ai-recruiter-staging-edge
 host: recruit.staging.example.com
 publicBaseUrl: https://recruit.staging.example.com
-externalSecret: { enabled: true, secretStore: aws-secrets-manager, remoteKey: ai-recruiter/staging, refreshInterval: 1h }
+externalSecret: { enabled: true, secretStore: gcp-secret-manager, remoteKeys: [ai-recruiter-staging-infra, ai-recruiter-staging], refreshInterval: 1h }
 api: { replicas: 2, autoscaling: { enabled: true, min: 2, max: 4, cpu: 70 } }
 worker: { replicas: 1, autoscaling: { enabled: false } }
 web: { replicas: 1, autoscaling: { enabled: false } }

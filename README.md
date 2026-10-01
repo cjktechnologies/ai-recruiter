@@ -15,7 +15,7 @@ Interview → Evaluation → SELECTION APPROVAL → Verification → Offer → O
 | `backend/` | FastAPI + SQLAlchemy + Alembic + Celery. 13 AI agents, a durable orchestrator with human-in-the-loop interrupts, and 158 REST operations |
 | `frontend/` | Next.js 16 + TypeScript + Tailwind: staff workspaces, careers site and candidate portal (BFF with httpOnly sessions) |
 | `deploy/helm/` | Kubernetes Helm chart (API, workers, beat, web, migration hook, HPA/PDB, NetworkPolicies, alerts) |
-| `infra/terraform/` | AWS: VPC, EKS, RDS PostgreSQL, ElastiCache, S3, KMS, ECR, WAF, Secrets Manager, GitHub OIDC |
+| `infra/terraform/` | Google Cloud: VPC, GKE, Cloud SQL PostgreSQL, Memorystore, Cloud Storage, Cloud KMS, Artifact Registry, Cloud Armor, Secret Manager, GitHub Workload Identity Federation |
 | `.github/workflows/` | CI (tests, e2e, IaC validation), security scanning, CD (staging → approved production, rollback) |
 | `docs/` | PRD, SDD, ERD, agent architecture, security model, AI governance, UI spec, API docs, deployment, runbook, guides |
 

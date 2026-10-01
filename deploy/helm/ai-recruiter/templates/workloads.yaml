@@ -64,7 +64,9 @@ spec:
             - { name: WEB_CONCURRENCY, value: {{ $root.Values.api.webConcurrency | quote }} }
             {{- end }}
           envFrom: {{- include "ar.envFrom" $root | nindent 12 }}
-          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            {{- include "ar.redisTlsMount" $root | nindent 12 }}
           {{- end }}
           resources: {{- toYaml $spec.resources | nindent 12 }}
           {{- include "ar.containerSecurity" $root | nindent 10 }}
@@ -72,6 +74,8 @@ spec:
         - { name: tmp, emptyDir: {} }
         {{- if eq $name "web" }}
         - { name: cache, emptyDir: {} }
+        {{- else }}
+        {{- include "ar.redisTlsVolume" $root | nindent 8 }}
         {{- end }}
 {{- if $spec.autoscaling.enabled }}
 ---

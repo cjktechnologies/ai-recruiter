@@ -38,7 +38,9 @@ class RateLimiter:
             try:
                 import redis
 
-                self._redis = redis.Redis.from_url(s.redis_url, socket_timeout=0.25, socket_connect_timeout=0.25)
+                self._redis = redis.Redis.from_url(
+                    s.redis_url, socket_timeout=0.25, socket_connect_timeout=0.25, **s.redis_ssl_options()
+                )
             except Exception:  # pragma: no cover
                 self._redis = None
 

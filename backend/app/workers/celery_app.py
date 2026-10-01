@@ -25,6 +25,8 @@ celery.conf.update(
     task_time_limit=600,
     task_soft_time_limit=540,
     broker_connection_retry_on_startup=True,
+    broker_use_ssl=settings.redis_ssl_options() or None,
+    redis_backend_use_ssl=settings.redis_ssl_options() or None,
     task_routes={"app.workers.tasks.run_ai_*": {"queue": "ai"}},
     beat_schedule={
         "interview-reminders": {

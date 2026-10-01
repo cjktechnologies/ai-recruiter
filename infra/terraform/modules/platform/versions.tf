@@ -1,12 +1,9 @@
 terraform {
   required_version = ">= 1.8"
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.70"
-      # aws.dr: second region for cross-region backup replication (disaster recovery).
-      configuration_aliases = [aws.dr]
-    }
-    random = { source = "hashicorp/random", version = "~> 3.6" }
+    google = { source = "hashicorp/google", version = "~> 8.0" }
+    # google_project_service_identity (service agents for CMEK grants) is only in google-beta.
+    google-beta = { source = "hashicorp/google-beta", version = "~> 8.0" }
+    random      = { source = "hashicorp/random", version = "~> 3.6" }
   }
 }

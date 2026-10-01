@@ -1,4 +1,11 @@
 environment: production
+ingress:
+  gke:
+    enabled: true
+    staticIpName: ai-recruiter-production-ingress
+    managedCertificate: true
+    sslPolicy: ai-recruiter-production-tls
+    securityPolicy: ai-recruiter-production-edge
 host: recruit.example.com
 publicBaseUrl: https://recruit.example.com
-externalSecret: { enabled: true, secretStore: aws-secrets-manager, remoteKey: ai-recruiter/production, refreshInterval: 1h }
+externalSecret: { enabled: true, secretStore: gcp-secret-manager, remoteKeys: [ai-recruiter-production-infra, ai-recruiter-production], refreshInterval: 1h }

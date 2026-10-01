@@ -3,10 +3,12 @@ kind: ServiceAccount
 metadata:
   name: {{ include "ar.name" . }}
   labels: {{- include "ar.labels" . | nindent 4 }}
-  annotations: {{- toYaml .Values.serviceAccount.annotations | nindent 4 }}
+  {{- $ann := deepCopy (.Values.serviceAccount.annotations | default dict) }}
+  {{- with .Values.gcp.appServiceAccount }}{{ $_ := set $ann "iam.gke.io/gcp-service-account" . }}{{ end }}
+  annotations: {{- toYaml $ann | nindent 4 }}
 {{- if .Values.externalSecret.enabled }}
 ---
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: {{ .Values.existingSecretName }}
@@ -15,8 +17,11 @@ spec:
   refreshInterval: {{ .Values.externalSecret.refreshInterval }}
   secretStoreRef: { name: {{ .Values.externalSecret.secretStore }}, kind: ClusterSecretStore }
   target: { name: {{ .Values.existingSecretName }}, creationPolicy: Owner }
+  # Later entries win on duplicate keys: Terraform-managed infra values, then operator-managed secrets.
   dataFrom:
-    - extract: { key: {{ .Values.externalSecret.remoteKey }} }
+    {{- range .Values.externalSecret.remoteKeys }}
+    - extract: { key: {{ . }} }
+    {{- end }}
 {{- end }}
 ---
 # Database migrations run as a pre-install/pre-upgrade hook: the release only proceeds if they succeed.

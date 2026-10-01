@@ -17,40 +17,71 @@ jobs:
       name: ${{ inputs.environment }}   # production requires reviewer approval (environment protection rule)
       url: ${{ vars.PUBLIC_URL }}
     env:
-      AWS_REGION: eu-west-1
       RELEASE: ai-recruiter
       NAMESPACE: ai-recruiter
+      CLUSTER: ai-recruiter-${{ inputs.environment }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_IMAGE_REGISTRY: ${{ vars.GCP_IMAGE_REGISTRY }}
+      PUBLIC_URL: ${{ vars.PUBLIC_URL }}
     steps:
       - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with: { role-to-assume: "${{ vars.AWS_DEPLOY_ROLE_ARN }}", aws-region: "${{ env.AWS_REGION }}" }
-      - id: ecr
-        uses: aws-actions/amazon-ecr-login@v2
+      - name: Check deployment configuration
+        run: |
+          missing=""
+          for v in GCP_WORKLOAD_IDENTITY_PROVIDER GCP_DEPLOY_SERVICE_ACCOUNT GCP_PROJECT_ID GCP_IMAGE_REGISTRY PUBLIC_URL; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing GitHub variables for '${{ inputs.environment }}':$missing (see docs/operations/deployment.md)"; exit 1
+          fi
+        env:
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_DEPLOY_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - uses: google-github-actions/get-gke-credentials@v3
+        with:
+          cluster_name: ${{ env.CLUSTER }}
+          location: ${{ env.GCP_REGION }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          use_dns_based_endpoint: true   # IAM-authenticated; the IP endpoint is not open to the internet
       - uses: azure/setup-helm@v4
-      - name: Configure kubectl
-        run: aws eks update-kubeconfig --name "ai-recruiter-${{ inputs.environment }}" --region "$AWS_REGION"
-      - name: Pre-deploy database snapshot (production)
+      - name: Pre-deploy database backup (production)
         if: inputs.environment == 'production'
         run: |
-          aws rds create-db-snapshot --db-instance-identifier ai-recruiter-production \
-            --db-snapshot-identifier "pre-deploy-${{ inputs.image_tag }}-${{ github.run_attempt }}"
+          gcloud sql backups create --instance "$CLUSTER" --project "$GCP_PROJECT_ID" \
+            --description "pre-deploy ${{ inputs.image_tag }} (run ${{ github.run_id }}.${{ github.run_attempt }})"
       - name: Helm upgrade (migrations run as a pre-upgrade hook; --atomic rolls back on failure)
         run: |
+          host="${PUBLIC_URL#https://}"; host="${host%%/*}"
           helm upgrade --install "$RELEASE" deploy/helm/ai-recruiter \
             --namespace "$NAMESPACE" --create-namespace \
             -f deploy/helm/ai-recruiter/values-${{ inputs.environment }}.yaml \
-            --set image.api.repository=${{ steps.ecr.outputs.registry }}/ai-recruiter-api \
-            --set image.web.repository=${{ steps.ecr.outputs.registry }}/ai-recruiter-web \
+            --set image.api.repository="$GCP_IMAGE_REGISTRY/api" \
+            --set image.web.repository="$GCP_IMAGE_REGISTRY/web" \
             --set image.api.tag=${{ inputs.image_tag }} --set image.web.tag=${{ inputs.image_tag }} \
-            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=${{ vars.APP_ROLE_ARN }} \
-            --set ingress.tlsCertificateArn=${{ vars.TLS_CERT_ARN }} \
+            --set host="$host" --set publicBaseUrl="https://$host" \
             --atomic --timeout 15m --history-max 20 --wait
       - name: Smoke tests
+        id: smoke
         run: |
           set -e
-          curl -fsS "${{ vars.PUBLIC_URL }}/login" > /dev/null
           kubectl -n "$NAMESPACE" run smoke-${{ github.run_id }} --rm -i --restart=Never --image=curlimages/curl -- \
-            curl -fsS http://$RELEASE-api:8000/readyz
+            sh -c "curl -fsS http://$RELEASE-api:8000/readyz && curl -fsS -o /dev/null http://$RELEASE-web:3000/login"
+          # The Google-managed certificate is issued once DNS points at the ingress IP (first deploy
+          # can take up to an hour); check the public URL only when it is active.
+          cert="$(kubectl -n "$NAMESPACE" get managedcertificate "$RELEASE" -o jsonpath='{.status.certificateStatus}' 2>/dev/null || true)"
+          if [ "$cert" = "Active" ]; then
+            curl -fsS --retry 10 --retry-delay 15 --retry-all-errors "$PUBLIC_URL/login" > /dev/null
+          else
+            echo "::warning::Managed certificate status is '${cert:-unknown}'; skipped the public URL check"
+          fi
+      # A failed `helm upgrade --atomic` has already rolled itself back; only a release that deployed
+      # but failed its smoke tests is rolled back here.
       - name: Roll back on smoke-test failure
-        if: failure()
+        if: failure() && steps.smoke.outcome == 'failure'
         run: helm rollback "$RELEASE" 0 --namespace "$NAMESPACE" --wait --timeout 10m

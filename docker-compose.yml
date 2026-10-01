@@ -33,19 +33,21 @@ services:
       interval: 5s
       retries: 10
 
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
-    environment: { MINIO_ROOT_USER: minioadmin, MINIO_ROOT_PASSWORD: minioadmin }
-    volumes: [miniodata:/data]
-    ports: ["9001:9001"]
+  # Google Cloud Storage emulator (same JSON API as GCS; the app reaches it via STORAGE_EMULATOR_HOST).
+  gcs:
+    image: fsouza/fake-gcs-server:1.56
+    command: ["-scheme", "http", "-port", "4443", "-public-host", "gcs:4443", "-backend", "filesystem",
+              "-filesystem-root", "/data"]
+    volumes: [gcsdata:/data]
+    ports: ["4443:4443"]
 
-  minio-init:
-    image: minio/mc:latest
-    depends_on: [minio]
+  gcs-init:
+    image: curlimages/curl:8.22.0
+    depends_on: [gcs]
     entrypoint: >
-      /bin/sh -c "until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done;
-      mc mb -p local/candidate-documents; mc anonymous set none local/candidate-documents"
+      /bin/sh -c "until curl -fsS http://gcs:4443/storage/v1/b > /dev/null; do sleep 1; done;
+      curl -sS -X POST -H 'Content-Type: application/json' -d '{\"name\":\"candidate-documents\"}'
+      http://gcs:4443/storage/v1/b || true"
 
   clamav:
     image: clamav/clamav:stable
@@ -65,6 +67,7 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
+      gcs-init: { condition: service_completed_successfully }
     ports: ["8000:8000"]
 
   worker:
@@ -72,6 +75,7 @@ services:
     command: ["celery", "-A", "app.workers.celery_app:celery", "worker", "-Q", "celery,ai", "--loglevel=INFO", "--concurrency=4"]
     depends_on:
       migrate: { condition: service_completed_successfully }
+      gcs-init: { condition: service_completed_successfully }
 
   beat:
     <<: *backend
@@ -89,4 +93,4 @@ services:
 volumes:
   pgdata:
   redisdata:
-  miniodata:
+  gcsdata:

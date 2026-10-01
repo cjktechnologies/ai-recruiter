@@ -1,11 +1,12 @@
-"""Object storage port with local-filesystem and S3-compatible adapters."""
+"""Object storage port with local-filesystem and Google Cloud Storage adapters."""
 
 from __future__ import annotations
 
+import contextlib
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from app.core.config import get_settings
 
@@ -39,36 +40,41 @@ class LocalStorage:
         self._path(key).unlink(missing_ok=True)
 
 
-class S3Storage:
-    """S3 / MinIO / any S3-compatible store; server-side encryption with KMS when configured."""
+class GCSStorage:
+    """Google Cloud Storage.
 
-    def __init__(self, bucket: str, endpoint_url: str | None, region: str, kms_key_id: str | None) -> None:
-        import boto3
+    Credentials come from Application Default Credentials (GKE Workload Identity in the cluster).
+    Encryption at rest uses the bucket's default Cloud KMS key; ``kms_key_name`` pins it per object
+    as well. Setting ``STORAGE_EMULATOR_HOST`` (local compose) targets a fake-gcs-server instead.
+    """
 
-        self._client = boto3.client("s3", endpoint_url=endpoint_url, region_name=region)
-        self.bucket = bucket
-        self.kms_key_id = kms_key_id
+    def __init__(self, bucket: str, project: str | None, kms_key_name: str | None, client: Any = None) -> None:
+        if client is None:
+            from google.cloud import storage
+
+            client = storage.Client(project=project)
+        self._bucket = client.bucket(bucket)
+        self.kms_key_name = kms_key_name
 
     def put(self, key: str, data: bytes, content_type: str) -> None:
-        extra: dict[str, str] = {"ContentType": content_type}
-        if self.kms_key_id:
-            extra.update(ServerSideEncryption="aws:kms", SSEKMSKeyId=self.kms_key_id)
-        else:
-            extra["ServerSideEncryption"] = "AES256"
-        self._client.put_object(Bucket=self.bucket, Key=key, Body=data, **extra)
+        blob = self._bucket.blob(key, kms_key_name=self.kms_key_name)
+        blob.upload_from_string(data, content_type=content_type)
 
     def get(self, key: str) -> bytes:
-        return self._client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
+        return bytes(self._bucket.blob(key).download_as_bytes())
 
     def delete(self, key: str) -> None:
-        self._client.delete_object(Bucket=self.bucket, Key=key)
+        from google.api_core.exceptions import NotFound
+
+        with contextlib.suppress(NotFound):
+            self._bucket.blob(key).delete()
 
 
 @lru_cache
 def get_storage() -> ObjectStorage:
     s = get_settings()
-    if s.storage_backend == "s3":
-        if not s.s3_bucket:
-            raise RuntimeError("S3_BUCKET is required when STORAGE_BACKEND=s3")
-        return S3Storage(s.s3_bucket, s.s3_endpoint_url, s.s3_region, s.s3_kms_key_id)
+    if s.storage_backend == "gcs":
+        if not s.gcs_bucket:
+            raise RuntimeError("GCS_BUCKET is required when STORAGE_BACKEND=gcs")
+        return GCSStorage(s.gcs_bucket, s.gcp_project_id, s.gcs_kms_key_name)
     return LocalStorage(s.storage_local_path)
