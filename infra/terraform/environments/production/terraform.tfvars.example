@@ -1,0 +1,5 @@
+# Copy to terraform.tfvars (git-ignored) and fill in from your project and the bootstrap outputs.
+project_id                    = "my-recruiter-production"
+github_workload_identity_pool = "projects/123456789012/locations/global/workloadIdentityPools/github"
+artifact_registry_repository  = "projects/my-recruiter-shared/locations/europe-west1/repositories/ai-recruiter"
+alert_email                   = "oncall@example.com"

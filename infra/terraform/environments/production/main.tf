@@ -1,52 +1,58 @@
 terraform {
   required_version = ">= 1.8"
-  backend "s3" {
-    # Created by infra/terraform/bootstrap. Configure with -backend-config or edit per account.
-    bucket         = "ai-recruiter-tfstate"
-    key            = "production/terraform.tfstate"
-    region         = "eu-west-1"
-    dynamodb_table = "ai-recruiter-tflock"
-    encrypt        = true
+  backend "gcs" {
+    # Bucket created by infra/terraform/bootstrap:
+    #   terraform init -backend-config="bucket=<bootstrap output state_bucket>"
+    prefix = "production"
   }
   required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.70" }
+    google      = { source = "hashicorp/google", version = "~> 8.0" }
+    google-beta = { source = "hashicorp/google-beta", version = "~> 8.0" }
   }
 }
 
+variable "project_id" {
+  description = "Google Cloud project for the production environment"
+  type        = string
+}
 variable "region" {
   type    = string
-  default = "eu-west-1"
+  default = "europe-west1"
 }
-variable "dr_region" {
-  type    = string
-  default = "eu-central-1"
+variable "github_workload_identity_pool" {
+  description = "Bootstrap output workload_identity_pool"
+  type        = string
 }
-variable "github_repository" {
+variable "artifact_registry_repository" {
+  description = "Bootstrap output artifact_registry_repository"
+  type        = string
+}
+variable "alert_email" {
   type    = string
-  default = "cjktechnologies/ai-recruiter"
+  default = ""
 }
 
-provider "aws" {
-  region = var.region
-  default_tags { tags = { Project = "ai-recruiter", Environment = "production" } }
+provider "google" {
+  project        = var.project_id
+  region         = var.region
+  default_labels = { project = "ai-recruiter", environment = "production" }
 }
-provider "aws" {
-  alias  = "dr"
-  region = var.dr_region
+
+provider "google-beta" {
+  project = var.project_id
+  region  = var.region
 }
 
 module "platform" {
-  source    = "../../modules/platform"
-  providers = { aws = aws, aws.dr = aws.dr }
+  source = "../../modules/platform"
 
-  name              = "ai-recruiter-production"
-  environment       = "production"
-  region            = var.region
-  github_repository = var.github_repository
-  vpc_cidr          = "10.40.0.0/16"
+  name                          = "ai-recruiter-production"
+  environment                   = "production"
+  project_id                    = var.project_id
+  region                        = var.region
+  github_workload_identity_pool = var.github_workload_identity_pool
+  artifact_registry_repository  = var.artifact_registry_repository
+  alert_email                   = var.alert_email
 }
 
-output "platform" {
-  value     = module.platform
-  sensitive = true
-}
+output "platform" { value = module.platform }

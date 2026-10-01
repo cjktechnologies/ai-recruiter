@@ -15,6 +15,10 @@ helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
   value: {{ .Values.publicBaseUrl | quote }}
 - name: OIDC_REDIRECT_URI
   value: "{{ .Values.publicBaseUrl }}/api/session/oidc"
+{{- if .Values.redisTls.enabled }}
+- name: REDIS_TLS_CA_CERT
+  value: "{{ .Values.redisTls.mountPath }}/ca.pem"
+{{- end }}
 {{- range $k, $v := .Values.config }}
 - name: {{ $k }}
   value: {{ $v | quote }}
@@ -37,4 +41,18 @@ securityContext:
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
   capabilities: { drop: ["ALL"] }
+{{- end -}}
+
+{{- define "ar.redisTlsMount" -}}
+{{- if .Values.redisTls.enabled }}
+- { name: redis-tls, mountPath: {{ .Values.redisTls.mountPath }}, readOnly: true }
+{{- end }}
+{{- end -}}
+{{- define "ar.redisTlsVolume" -}}
+{{- if .Values.redisTls.enabled }}
+- name: redis-tls
+  secret:
+    secretName: {{ .Values.existingSecretName }}
+    items: [{ key: {{ .Values.redisTls.secretKey }}, path: ca.pem }]
+{{- end }}
 {{- end -}}

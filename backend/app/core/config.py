@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     database_pool_size: int = 10
     database_max_overflow: int = 20
     redis_url: str = "redis://localhost:6379/0"
+    # PEM CA bundle for rediss:// (Memorystore in-transit encryption uses a per-instance CA).
+    redis_tls_ca_cert: str | None = None
 
     # --- Security ----------------------------------------------------------
     jwt_secret: SecretStr = SecretStr("change-me-local-only-secret-change-me")
@@ -50,12 +52,13 @@ class Settings(BaseSettings):
     oidc_default_org_slug: str | None = None
 
     # --- Object storage ----------------------------------------------------
-    storage_backend: Literal["local", "s3"] = "local"
+    storage_backend: Literal["local", "gcs"] = "local"
     storage_local_path: str = "./var/storage"
-    s3_bucket: str | None = None
-    s3_endpoint_url: str | None = None
-    s3_region: str = "us-east-1"
-    s3_kms_key_id: str | None = None
+    gcp_project_id: str | None = None
+    gcs_bucket: str | None = None
+    # Optional per-object CMEK (projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>); the bucket's
+    # default key applies when unset.
+    gcs_kms_key_name: str | None = None
 
     # --- Malware scanning --------------------------------------------------
     clamav_host: str | None = None
@@ -115,6 +118,22 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    def redis_ssl_options(self) -> dict[str, object]:
+        """TLS options for redis-py / Celery when ``REDIS_URL`` uses ``rediss://``.
+
+        The server certificate is verified against the instance CA. Memorystore certificates are
+        issued for the instance IP rather than a hostname, so hostname matching is disabled; the
+        per-instance CA already pins the peer.
+        """
+        if not self.redis_url.startswith("rediss://"):
+            return {}
+        import ssl
+
+        opts: dict[str, object] = {"ssl_cert_reqs": ssl.CERT_REQUIRED, "ssl_check_hostname": False}
+        if self.redis_tls_ca_cert:
+            opts["ssl_ca_certs"] = self.redis_tls_ca_cert
+        return opts
 
 
 @lru_cache

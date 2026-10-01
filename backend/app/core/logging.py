@@ -78,7 +78,7 @@ def configure_logging(level: str = "INFO", json_output: bool = True) -> None:
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(level.upper())
-    for noisy in ("uvicorn.access", "httpx", "botocore", "urllib3"):
+    for noisy in ("uvicorn.access", "httpx", "google.auth", "urllib3"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 

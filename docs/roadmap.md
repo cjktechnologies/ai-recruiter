@@ -27,14 +27,14 @@
 - Live calls to hosted LLM providers, Google/Microsoft calendars, Twilio and HRIS endpoints. Adapters follow each
   vendor's documented APIs and are covered by contract-style unit tests with fakes. Validate them against sandbox
   accounts before go-live.
-- Production deployment itself (requires AWS credentials, DNS and TLS certificates).
+- Production deployment itself (requires a Google Cloud project, DNS and the GitHub variables in the deployment guide).
 
 ## Next increments
 
 1. pgvector/HNSW for semantic search at > 200k candidates per tenant; hosted embeddings by default.
 2. Speech-to-text adapter (e.g. Whisper/Deepgram) feeding the Interview Assistant.
 3. Offer e-signature integration (DocuSign/Adobe Sign) and a document template editor.
-4. Per-tenant database encryption keys (envelope encryption with KMS data keys).
+4. Per-tenant database encryption keys (envelope encryption with Cloud KMS data keys).
 5. Row-level security in PostgreSQL as defence-in-depth for tenant isolation.
 6. Job-board push APIs (LinkedIn, Indeed) where licensing permits; the XML feed is the current integration.
 7. i18n of the candidate-facing UI and templates.

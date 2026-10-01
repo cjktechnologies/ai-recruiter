@@ -17,7 +17,7 @@ reject, select, set pay and hire, and every such decision is attributable and au
 | Audit trails | Append-only audit log; `ai_agent_executions`; `ai_recommendations` with review outcome |
 | Bias & fairness monitoring | Voluntary EEO data kept separate from screening; four-fifths adverse-impact monitor per stage and dimension (groups <5 suppressed); alerts surface as critical insights; CI counterfactual and adverse-impact tests |
 | Privacy controls | PII minimisation in logs and AI inputs; field encryption; role-gated PII |
-| Data retention | Org-level `data_retention_days`; nightly purge anonymises expired candidates without active applications; S3 noncurrent versions expire |
+| Data retention | Org-level `data_retention_days`; nightly purge anonymises expired candidates without active applications; Cloud Storage noncurrent versions expire |
 | Consent management | Per-purpose consent records (processing, AI screening, talent pool, recording, background check) with expiry; AI screening is skipped without consent and routed to manual review |
 | Right to erasure / access | Irreversible anonymisation (documents deleted, PII overwritten, embeddings dropped); JSON export for data-subject access requests; candidate self-service in the portal |
 | Encryption | See security model |

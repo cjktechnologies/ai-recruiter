@@ -2,6 +2,7 @@ name: CD
 
 # main → build immutable images → staging (auto) → smoke tests → production (manual approval via
 # the GitHub `production` environment) → smoke tests → automatic Helm rollback on failure.
+# Google Cloud access uses Workload Identity Federation (GitHub OIDC); no keys are stored in GitHub.
 on:
   push:
     branches: [main]
@@ -13,37 +14,54 @@ on:
 
 permissions:
   contents: read
-  id-token: write   # GitHub OIDC → AWS (no stored cloud credentials)
+  id-token: write   # GitHub OIDC → Google Cloud Workload Identity Federation
 
 concurrency:
   group: cd-${{ github.ref }}
   cancel-in-progress: false
 
 env:
-  AWS_REGION: eu-west-1
   IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
 
 jobs:
   build:
     if: ${{ !inputs.image_tag }}
     runs-on: ubuntu-latest
-    environment: staging
+    environment: staging   # the staging deploy identity is the one allowed to push images
     strategy:
       matrix: { component: [api, web] }
     steps:
       - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with: { role-to-assume: "${{ vars.AWS_DEPLOY_ROLE_ARN }}", aws-region: "${{ env.AWS_REGION }}" }
-      - id: ecr
-        uses: aws-actions/amazon-ecr-login@v2
+      - name: Check deployment configuration
+        run: |
+          missing=""
+          for v in GCP_WORKLOAD_IDENTITY_PROVIDER GCP_DEPLOY_SERVICE_ACCOUNT GCP_IMAGE_REGISTRY; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing GitHub variables:$missing (see docs/operations/deployment.md)"; exit 1
+          fi
+        env:
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_DEPLOY_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          GCP_IMAGE_REGISTRY: ${{ vars.GCP_IMAGE_REGISTRY }}
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Authenticate Docker to Artifact Registry
+        run: gcloud auth configure-docker "${GCP_IMAGE_REGISTRY%%/*}" --quiet
+        env: { GCP_IMAGE_REGISTRY: "${{ vars.GCP_IMAGE_REGISTRY }}" }
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.component == 'api' && 'backend' || 'frontend' }}
+          platforms: linux/amd64
           push: true
           provenance: true
           sbom: true
-          tags: ${{ steps.ecr.outputs.registry }}/ai-recruiter-${{ matrix.component }}:${{ env.IMAGE_TAG }}
+          tags: ${{ vars.GCP_IMAGE_REGISTRY }}/${{ matrix.component }}:${{ env.IMAGE_TAG }}
           cache-from: type=gha,scope=${{ matrix.component }}
           cache-to: type=gha,mode=max,scope=${{ matrix.component }}
 

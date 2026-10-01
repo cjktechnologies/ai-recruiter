@@ -28,7 +28,7 @@ def readyz(db: DB, response: Response) -> dict:
         try:
             import redis
 
-            redis.Redis.from_url(s.redis_url, socket_timeout=0.5).ping()
+            redis.Redis.from_url(s.redis_url, socket_timeout=0.5, **s.redis_ssl_options()).ping()
             checks["redis"] = "ok"
         except Exception as exc:
             checks["redis"] = f"error: {type(exc).__name__}"

@@ -1,5 +1,6 @@
 {{- $root := . -}}
-{{- range $name, $port := dict "api" 8000 "web" 3000 }}
+{{- $gke := .Values.ingress.gke.enabled -}}
+{{- range $name, $svc := dict "api" (dict "port" 8000 "health" "/healthz") "web" (dict "port" 3000 "health" "/login") }}
 ---
 apiVersion: v1
 kind: Service
@@ -7,9 +8,54 @@ metadata:
   name: {{ include "ar.name" $root }}-{{ $name }}
   labels: {{- include "ar.labels" $root | nindent 4 }}
     app.kubernetes.io/component: {{ $name }}
+  {{- if $gke }}
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    cloud.google.com/backend-config: '{"default": "{{ include "ar.name" $root }}-{{ $name }}"}'
+  {{- end }}
 spec:
   selector: { app.kubernetes.io/instance: {{ $root.Release.Name }}, app.kubernetes.io/component: {{ $name }} }
-  ports: [{ name: http, port: {{ $port }}, targetPort: http }]
+  ports: [{ name: http, port: {{ $svc.port }}, targetPort: http }]
+{{- if $gke }}
+---
+# Load-balancer backend settings: health check, timeout, Cloud Armor (WAF + rate limiting), logging.
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ include "ar.name" $root }}-{{ $name }}
+  labels: {{- include "ar.labels" $root | nindent 4 }}
+spec:
+  timeoutSec: {{ $root.Values.ingress.gke.backendTimeoutSec }}
+  connectionDraining: { drainingTimeoutSec: 30 }
+  healthCheck: { type: HTTP, requestPath: {{ $svc.health }}, port: {{ $svc.port }}, checkIntervalSec: 15 }
+  logging: { enable: true, sampleRate: 1.0 }
+  {{- with $root.Values.ingress.gke.securityPolicy }}
+  securityPolicy: { name: {{ . }} }
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- if $gke }}
+---
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: {{ include "ar.name" . }}
+  labels: {{- include "ar.labels" . | nindent 4 }}
+spec:
+  redirectToHttps: { enabled: true }
+  {{- with .Values.ingress.gke.sslPolicy }}
+  sslPolicy: {{ . }}
+  {{- end }}
+{{- if .Values.ingress.gke.managedCertificate }}
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: {{ include "ar.name" . }}
+  labels: {{- include "ar.labels" . | nindent 4 }}
+spec:
+  domains: [{{ .Values.host | quote }}]
+{{- end }}
 {{- end }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -18,11 +64,19 @@ metadata:
   name: {{ include "ar.name" . }}
   annotations:
     {{- toYaml .Values.ingress.annotations | nindent 4 }}
-    {{- if .Values.ingress.tlsCertificateArn }}
-    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.ingress.tlsCertificateArn }}
+    {{- if $gke }}
+    networking.gke.io/v1beta1.FrontendConfig: {{ include "ar.name" . }}
+    {{- with .Values.ingress.gke.staticIpName }}
+    kubernetes.io/ingress.global-static-ip-name: {{ . }}
+    {{- end }}
+    {{- if .Values.ingress.gke.managedCertificate }}
+    networking.gke.io/managed-certificates: {{ include "ar.name" . }}
+    {{- end }}
     {{- end }}
 spec:
-  ingressClassName: {{ .Values.ingress.className }}
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
   rules:
     - host: {{ .Values.host }}
       http:
@@ -54,7 +108,7 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from: [{ podSelector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }} } } }]
-    - ports: [{ port: 3000 }, { port: 8000 }]   # from the load balancer
+    - ports: [{ port: 3000 }, { port: 8000 }]   # from the load balancer (GFE and health-check ranges)
 {{- if .Values.clamav.enabled }}
 ---
 apiVersion: apps/v1

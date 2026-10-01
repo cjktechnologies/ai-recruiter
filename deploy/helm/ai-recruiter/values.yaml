@@ -15,8 +15,7 @@ config:
   LLM_MODEL: claude-opus-5-5
   LLM_EFFORT: medium
   EMBEDDING_PROVIDER: local
-  STORAGE_BACKEND: s3
-  S3_REGION: eu-west-1
+  STORAGE_BACKEND: gcs
   EMAIL_BACKEND: smtp
   SMS_BACKEND: console
   REQUIRE_MALWARE_SCAN: "true"
@@ -24,18 +23,30 @@ config:
   RATE_LIMIT_PER_MINUTE: "300"
   AUTH_RATE_LIMIT_PER_MINUTE: "20"
 
-# Secrets are synced from AWS Secrets Manager by External Secrets Operator into this Secret.
-# Keys: DATABASE_URL, REDIS_URL, JWT_SECRET, DATA_ENCRYPTION_KEY, ANTHROPIC_API_KEY, S3_BUCKET,
-#       S3_KMS_KEY_ID, SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, OIDC_* ...
+# Secrets are synced from Google Secret Manager by External Secrets Operator into this Secret. Each
+# remote secret is a JSON document:
+#   <name>-infra  written by Terraform: DATABASE_URL, REDIS_URL, REDIS_CA_CERT, JWT_SECRET,
+#                 GCP_PROJECT_ID, GCS_BUCKET, GCS_KMS_KEY_NAME
+#   <name>        written by operators: DATA_ENCRYPTION_KEY, ANTHROPIC_API_KEY, SMTP_*, OIDC_* ...
 externalSecret:
   enabled: true
-  secretStore: aws-secrets-manager
-  remoteKey: ai-recruiter/production
+  secretStore: gcp-secret-manager
+  remoteKeys: [ai-recruiter-production-infra, ai-recruiter-production]
   refreshInterval: 1h
 existingSecretName: ai-recruiter-secrets
 
 serviceAccount:
-  annotations: {}   # eks.amazonaws.com/role-arn: arn:aws:iam::<acct>:role/ai-recruiter (IRSA for S3/KMS)
+  annotations: {}
+# GKE Workload Identity: the Kubernetes service account acts as this Google service account
+# (Cloud Storage access). Terraform output `app_service_account`.
+gcp:
+  appServiceAccount: ""
+
+# Memorystore in-transit encryption: mount the instance CA (secret key REDIS_CA_CERT) for rediss://.
+redisTls:
+  enabled: true
+  secretKey: REDIS_CA_CERT
+  mountPath: /etc/redis-tls
 
 api:
   replicas: 3
@@ -55,16 +66,21 @@ clamav:
   enabled: true
   resources: { requests: { cpu: 100m, memory: 1536Mi }, limits: { memory: 2560Mi } }
 
+# GKE Ingress → global external Application Load Balancer with container-native (NEG) backends.
 ingress:
-  className: alb
+  className: ""          # GKE selects its controller with the kubernetes.io/ingress.class annotation
   annotations:
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
-    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
-    alb.ingress.kubernetes.io/healthcheck-path: /login
-  tlsCertificateArn: ""
+    kubernetes.io/ingress.class: gce
+  gke:
+    enabled: true
+    staticIpName: ""       # global address reserved by Terraform (output `ingress_ip_name`)
+    managedCertificate: true   # Google-managed TLS certificate for .Values.host
+    sslPolicy: ""          # Terraform output `ssl_policy_name` (TLS 1.2+, MODERN profile)
+    securityPolicy: ""     # Cloud Armor policy (Terraform output `security_policy_name`)
+    backendTimeoutSec: 120 # long-running AI requests
 
+# Google Cloud Managed Service for Prometheus (enabled on the GKE cluster) or Prometheus Operator.
 monitoring:
+  provider: gmp          # gmp | prometheus-operator
   serviceMonitor: true
   prometheusRules: true
