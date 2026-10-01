@@ -33,3 +33,4 @@ terraform.tfvars
 # OS
 .DS_Store
 dump.rdb
+.vercel/

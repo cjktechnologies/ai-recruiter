@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 300
     auth_rate_limit_per_minute: int = 20
     max_upload_mb: int = 10
+    # Shared with the web BFF. When set, the API trusts X-Client-IP only on requests that carry
+    # X-Proxy-Secret, for platforms that overwrite X-Forwarded-For between services (Vercel).
+    proxy_shared_secret: SecretStr | None = None
 
     # --- OIDC (optional SSO) -------------------------------------------------
     oidc_issuer: str | None = None
@@ -52,13 +55,18 @@ class Settings(BaseSettings):
     oidc_default_org_slug: str | None = None
 
     # --- Object storage ----------------------------------------------------
-    storage_backend: Literal["local", "gcs"] = "local"
+    storage_backend: Literal["local", "gcs", "vercel_blob"] = "local"
     storage_local_path: str = "./var/storage"
     gcp_project_id: str | None = None
     gcs_bucket: str | None = None
     # Optional per-object CMEK (projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>); the bucket's
     # default key applies when unset.
     gcs_kms_key_name: str | None = None
+    # Vercel Blob (private store); the token is injected when a Blob store is connected to the project.
+    blob_read_write_token: SecretStr | None = None
+
+    # --- Scheduled jobs (Vercel Cron calls /api/v1/internal/cron/* with this bearer secret) -----
+    cron_secret: SecretStr | None = None
 
     # --- Malware scanning --------------------------------------------------
     clamav_host: str | None = None
@@ -98,6 +106,16 @@ class Settings(BaseSettings):
     default_retention_days: int = 730
     consent_validity_days: int = 365
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _sqlalchemy_driver(cls, v: object) -> object:
+        """Accept provider URLs (Neon, Vercel Postgres, Heroku-style ``postgres://``) as-is."""
+        if isinstance(v, str):
+            for prefix in ("postgres://", "postgresql://"):
+                if v.startswith(prefix):
+                    return "postgresql+psycopg://" + v[len(prefix) :]
+        return v
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_origins(cls, v: object) -> object:
@@ -113,6 +131,8 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET must be a strong secret (>=32 chars) outside local/test")
             if self.data_encryption_key.get_secret_value() == DEV_ENCRYPTION_KEY:
                 raise ValueError("DATA_ENCRYPTION_KEY must be set outside local/test")
+        if self.storage_backend == "vercel_blob" and not self.blob_read_write_token:
+            raise ValueError("BLOB_READ_WRITE_TOKEN is required when STORAGE_BACKEND=vercel_blob")
         return self
 
     @property
@@ -122,18 +142,21 @@ class Settings(BaseSettings):
     def redis_ssl_options(self) -> dict[str, object]:
         """TLS options for redis-py / Celery when ``REDIS_URL`` uses ``rediss://``.
 
-        The server certificate is verified against the instance CA. Memorystore certificates are
-        issued for the instance IP rather than a hostname, so hostname matching is disabled; the
-        per-instance CA already pins the peer.
+        The server certificate is always verified. With a private CA (Memorystore) clients connect
+        by IP, so hostname matching is disabled and the per-instance CA pins the peer; otherwise
+        (e.g. Upstash) the public CA bundle and the hostname are checked.
         """
         if not self.redis_url.startswith("rediss://"):
             return {}
         import ssl
 
-        opts: dict[str, object] = {"ssl_cert_reqs": ssl.CERT_REQUIRED, "ssl_check_hostname": False}
         if self.redis_tls_ca_cert:
-            opts["ssl_ca_certs"] = self.redis_tls_ca_cert
-        return opts
+            return {
+                "ssl_cert_reqs": ssl.CERT_REQUIRED,
+                "ssl_check_hostname": False,
+                "ssl_ca_certs": self.redis_tls_ca_cert,
+            }
+        return {"ssl_cert_reqs": ssl.CERT_REQUIRED, "ssl_check_hostname": True}
 
 
 @lru_cache

@@ -4,3 +4,5 @@ export const API_PREFIX = "/api/v1";
 export const ACCESS_COOKIE = "rec_at";
 export const REFRESH_COOKIE = "rec_rt";
 export const SECURE_COOKIES = process.env.NODE_ENV === "production";
+/** Shared with the API so it can trust the client IP we pass on (see clientIpHeaders). */
+export const PROXY_SHARED_SECRET = process.env.PROXY_SHARED_SECRET ?? "";

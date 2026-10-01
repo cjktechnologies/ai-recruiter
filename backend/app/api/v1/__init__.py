@@ -8,6 +8,7 @@ from app.api.v1.routers import (
     assessments,
     auth,
     candidates,
+    cron,
     interviews,
     jobs,
     offers,
@@ -35,5 +36,6 @@ for module in (
     admin,
     portal,
     public,
+    cron,
 ):
     api_router.include_router(module.router)

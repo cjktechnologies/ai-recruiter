@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { API_PREFIX, BACKEND_URL, REFRESH_COOKIE } from "@/lib/config";
+import { clientIpHeaders } from "@/lib/proxy";
 import { clearSessionCookies, setSessionCookies } from "@/lib/session";
 
 /** Login (password or candidate magic-link token) → httpOnly session cookies. */
@@ -10,7 +11,7 @@ export async function POST(req: NextRequest) {
     `${BACKEND_URL}${API_PREFIX}${isMagic ? "/auth/candidate/verify" : "/auth/login"}`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": req.headers.get("x-forwarded-for") ?? "" },
+      headers: { "Content-Type": "application/json", ...clientIpHeaders(req) },
       body: JSON.stringify(isMagic ? { refresh_token: body.magic_token } : { email: body.email, password: body.password }),
     },
   );

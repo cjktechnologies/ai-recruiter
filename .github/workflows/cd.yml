@@ -3,9 +3,9 @@ name: CD
 # main → build immutable images → staging (auto) → smoke tests → production (manual approval via
 # the GitHub `production` environment) → smoke tests → automatic Helm rollback on failure.
 # Google Cloud access uses Workload Identity Federation (GitHub OIDC); no keys are stored in GitHub.
+# Manual only: the default production path is Vercel (vercel.yml). Re-add the push trigger to make
+# Google Cloud the automatic target again.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       image_tag:

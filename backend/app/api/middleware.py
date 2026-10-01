@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import time
 import uuid
 
@@ -14,6 +15,22 @@ from app.core.config import get_settings
 from app.core.errors import RateLimited
 from app.core.logging import get_logger, log_event, org_id_ctx, request_id_ctx, user_id_ctx
 from app.core.ratelimit import get_rate_limiter
+
+
+def client_ip(request: Request) -> str | None:
+    """Originating client IP.
+
+    Trusts ``X-Client-IP`` only when the request proves it came from the web BFF with the shared
+    proxy secret; otherwise the first ``X-Forwarded-For`` hop (set by the ingress), then the peer.
+    """
+    secret = get_settings().proxy_shared_secret
+    if secret is not None:
+        given, ip = request.headers.get("x-proxy-secret"), request.headers.get("x-client-ip")
+        if given and ip and hmac.compare_digest(given.encode(), secret.get_secret_value().encode()):
+            return ip.strip()
+    fwd = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    return fwd or (request.client.host if request.client else None)
+
 
 logger = get_logger("http")
 REQUESTS = Counter("http_requests_total", "HTTP requests", ["method", "route", "status"])
@@ -38,9 +55,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         s = get_settings()
         if any(seg in path for seg in SENSITIVE_PUBLIC):
-            ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (
-                request.client.host if request.client else "unknown"
-            )
+            ip = client_ip(request) or "unknown"
             try:
                 get_rate_limiter().check(
                     f"ip:{ip}:{path.split('/')[3] if path.count('/') > 3 else path}",

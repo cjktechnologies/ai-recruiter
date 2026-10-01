@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "fastapi",
+  "git": { "deploymentEnabled": false },
+  "functions": {
+    "app/main.py": {
+      "maxDuration": 300,
+      "excludeFiles": "{tests/**,alembic/**,var/**,**/__pycache__/**,Dockerfile}"
+    }
+  },
+  "crons": [
+    { "path": "/api/v1/internal/cron/deliver-communications", "schedule": "*/5 * * * *" },
+    { "path": "/api/v1/internal/cron/interview-reminders", "schedule": "*/15 * * * *" },
+    { "path": "/api/v1/internal/cron/expire-stale-items", "schedule": "5 * * * *" },
+    { "path": "/api/v1/internal/cron/retention-purge", "schedule": "30 2 * * *" }
+  ]
+}
