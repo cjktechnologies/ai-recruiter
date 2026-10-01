@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1.7
 # ---- build stage: compile wheels -------------------------------------------------------
-FROM python:3.11-slim-bookworm AS build
+FROM python:3.12-slim-bookworm AS build
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /build
 COPY requirements.txt .
 RUN pip wheel --wheel-dir /wheels -r requirements.txt
 
 # ---- runtime stage ------------------------------------------------------------------------
-FROM python:3.11-slim-bookworm AS runtime
+FROM python:3.12-slim-bookworm AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     PORT=8000 ENVIRONMENT=production LOG_JSON=true
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* \

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ACCESS_COOKIE, API_PREFIX, BACKEND_URL, REFRESH_COOKIE } from "@/lib/config";
+import { clientIpHeaders } from "@/lib/proxy";
 import { clearSessionCookies, setSessionCookies, type TokenPair } from "@/lib/session";
 
 /**
@@ -17,8 +18,7 @@ async function forward(req: NextRequest, path: string[], token?: string): Promis
     if (v) headers.set(h, v);
   }
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) headers.set("X-Forwarded-For", fwd);
+  for (const [k, v] of Object.entries(clientIpHeaders(req))) headers.set(k, v);
   const hasBody = !["GET", "HEAD"].includes(req.method);
   return fetch(url, {
     method: req.method,
@@ -38,7 +38,7 @@ async function handler(req: NextRequest, ctx: { params: Promise<{ path: string[]
   if (upstream.status === 401 && rt) {
     const r = await fetch(`${BACKEND_URL}${API_PREFIX}/auth/refresh`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...clientIpHeaders(req) },
       body: JSON.stringify({ refresh_token: rt }),
     });
     if (r.ok) {

@@ -2,7 +2,7 @@
 name = "ai-recruiter-backend"
 version = "1.0.0"
 description = "AI-assisted recruitment operations platform (ATS + CRM + agent orchestration)"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
@@ -23,19 +23,27 @@ dependencies = [
   "python-docx>=1.1",
   "python-multipart>=0.0.9",
   "prometheus-client>=0.20",
+  # LLM provider SDKs (imported lazily; required on Vercel, which installs no optional extras)
+  "anthropic>=1.0",
+  "openai>=1.40",
+  "google-genai>=1.0",
 ]
 
 [project.optional-dependencies]
-ai = ["anthropic>=1.0", "openai>=1.40", "google-genai>=1.0"]
 dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.5", "mypy>=1.10"]
+
+# Vercel (Python runtime): FastAPI app object; dependencies come from uv.lock.
+[tool.vercel]
+entrypoint = "app.main:app"
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
-ignore = ["S101", "B008", "RUF012", "S105", "S106", "RUF001"]
+# UP046/UP047: keep typing.Generic/TypeVar (PEP 695 syntax is a style-only rewrite).
+ignore = ["S101", "B008", "RUF012", "S105", "S106", "RUF001", "UP046", "UP047"]
 
 [tool.ruff.lint.isort]
 known-third-party = ["alembic"]
@@ -46,7 +54,7 @@ known-first-party = ["app", "tests", "scripts"]
 "alembic/**" = ["E501"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 plugins = ["pydantic.mypy"]
 ignore_missing_imports = true
 warn_unused_ignores = true

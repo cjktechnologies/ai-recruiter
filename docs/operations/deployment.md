@@ -1,5 +1,9 @@
 # Deployment Guide
 
+> **Default target: Vercel.** See [vercel.md](vercel.md). This guide covers the Google Cloud (GKE) deployment,
+> which is kept for workloads that need long-running Celery workers or in-cluster malware scanning; its CD workflow
+> (`cd.yml`) runs on demand only.
+
 ## Environments
 
 | Env | Where | How it's deployed |

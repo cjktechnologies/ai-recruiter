@@ -1,0 +1,118 @@
+name: Deploy (Vercel)
+
+# main → migrate the database → build + deploy the API (FastAPI on Vercel Python) without taking
+# traffic → smoke test → promote; then the same for the web app (Next.js). A failed smoke test
+# leaves the previous production deployment serving. Migrations follow the expand/contract rule,
+# so the running version keeps working against the migrated schema.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-production
+  cancel-in-progress: false
+
+env:
+  VERCEL_CLI: vercel@62.1.0
+  VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+
+jobs:
+  api:
+    name: API (migrate, deploy, smoke, promote)
+    runs-on: ubuntu-latest
+    environment: { name: vercel, url: "${{ vars.VERCEL_API_URL }}" }
+    env:
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_API_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check deployment configuration
+        run: |
+          missing=""
+          for v in VERCEL_TOKEN MIGRATION_DATABASE_URL VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_API_URL; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing GitHub secrets/variables:$missing (see docs/operations/vercel.md)"; exit 1
+          fi
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          VERCEL_API_URL: ${{ vars.VERCEL_API_URL }}
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      # The Vercel Python builder uses uv from PATH and requires uv >= 0.9.25.
+      - uses: astral-sh/setup-uv@v7
+        with: { version: "0.12.21" }
+      - name: Database migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}   # direct (unpooled) connection
+        run: |
+          pip install -r requirements.txt
+          alembic upgrade head
+      - name: Build
+        run: |
+          npm install --global "$VERCEL_CLI"
+          vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+          vercel build --prod --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Deploy (no traffic yet)
+        id: deploy
+        run: |
+          url="$(vercel deploy --prebuilt --prod --skip-domain --token="${{ secrets.VERCEL_TOKEN }}")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Smoke test the new deployment
+        env:
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}   # only needed with Deployment Protection
+        run: |
+          curl -fsS --retry 5 --retry-delay 5 --retry-all-errors -H "x-vercel-protection-bypass: $BYPASS" \
+            "${{ steps.deploy.outputs.url }}/readyz"
+      - name: Promote to production
+        run: vercel promote "${{ steps.deploy.outputs.url }}" --yes --token="${{ secrets.VERCEL_TOKEN }}"
+
+  web:
+    name: Web (deploy, smoke, promote)
+    needs: [api]
+    runs-on: ubuntu-latest
+    environment: { name: vercel, url: "${{ vars.PUBLIC_URL }}" }
+    env:
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_WEB_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check deployment configuration
+        run: |
+          missing=""
+          for v in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID PUBLIC_URL; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing GitHub secrets/variables:$missing (see docs/operations/vercel.md)"; exit 1
+          fi
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - name: Build
+        run: |
+          npm install --global "$VERCEL_CLI"
+          vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+          vercel build --prod --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Deploy (no traffic yet)
+        id: deploy
+        run: |
+          url="$(vercel deploy --prebuilt --prod --skip-domain --token="${{ secrets.VERCEL_TOKEN }}")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Smoke test the new deployment
+        env:
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          curl -fsS -o /dev/null --retry 5 --retry-delay 5 --retry-all-errors -H "x-vercel-protection-bypass: $BYPASS" \
+            "${{ steps.deploy.outputs.url }}/login"
+      - name: Promote to production
+        run: vercel promote "${{ steps.deploy.outputs.url }}" --yes --token="${{ secrets.VERCEL_TOKEN }}"

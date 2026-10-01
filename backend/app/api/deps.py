@@ -11,6 +11,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.api.middleware import client_ip as client_ip
 from app.core import idempotency
 from app.core.config import get_settings
 from app.core.errors import AuthenticationError, PermissionDenied
@@ -23,11 +24,6 @@ from app.services.auth import principal_from_token
 bearer = HTTPBearer(auto_error=False)
 DB = Annotated[Session, Depends(get_db)]
 T = TypeVar("T")
-
-
-def client_ip(request: Request) -> str | None:
-    fwd = request.headers.get("x-forwarded-for")
-    return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else None)
 
 
 def get_principal(

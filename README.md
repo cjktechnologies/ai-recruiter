@@ -14,6 +14,7 @@ Interview → Evaluation → SELECTION APPROVAL → Verification → Offer → O
 |---|---|
 | `backend/` | FastAPI + SQLAlchemy + Alembic + Celery. 13 AI agents, a durable orchestrator with human-in-the-loop interrupts, and 158 REST operations |
 | `frontend/` | Next.js 16 + TypeScript + Tailwind: staff workspaces, careers site and candidate portal (BFF with httpOnly sessions) |
+| `backend/vercel.json`, `frontend/vercel.json` | Vercel projects (default production target): FastAPI on the Python runtime + Next.js, Neon, Upstash, private Blob, Cron |
 | `deploy/helm/` | Kubernetes Helm chart (API, workers, beat, web, migration hook, HPA/PDB, NetworkPolicies, alerts) |
 | `infra/terraform/` | Google Cloud: VPC, GKE, Cloud SQL PostgreSQL, Memorystore, Cloud Storage, Cloud KMS, Artifact Registry, Cloud Armor, Secret Manager, GitHub Workload Identity Federation |
 | `.github/workflows/` | CI (tests, e2e, IaC validation), security scanning, CD (staging → approved production, rollback) |
@@ -56,6 +57,7 @@ locust -f backend/tests/load/locustfile.py                                      
 Start with [`docs/product/PRD.md`](docs/product/PRD.md) and [`docs/architecture/SDD.md`](docs/architecture/SDD.md).
 Then see [agents](docs/architecture/agents.md), [ERD](docs/architecture/erd.md),
 [security](docs/security/security-model.md), [AI governance](docs/governance/ai-governance.md),
-[API](docs/api/README.md), [UI spec](docs/ux/ui-spec.md), [deployment](docs/operations/deployment.md),
+[API](docs/api/README.md), [UI spec](docs/ux/ui-spec.md), [Vercel deployment](docs/operations/vercel.md),
+[Google Cloud deployment](docs/operations/deployment.md),
 [runbook](docs/operations/runbook.md), [admin guide](docs/guides/admin-guide.md),
 [user guide](docs/guides/user-guide.md) and [roadmap & status](docs/roadmap.md).
